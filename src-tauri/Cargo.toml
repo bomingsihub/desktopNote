@@ -1,0 +1,29 @@
+[package]
+name = "desktop-note-floral"
+version = "1.0.0"
+description = "Floral style Windows desktop notes"
+authors = ["desktop-note"]
+license = "MIT"
+repository = ""
+edition = "2021"
+
+[lib]
+name = "desktop_note_floral_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.4.1", features = [] }
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "5"
+regex = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2.8.5", features = ["tray-icon", "image-png"] }
+tauri-plugin-autostart = "2.5.0"
+tauri-plugin-dialog = "2.4.0"
+tauri-plugin-global-shortcut = "2.3.0"
+tauri-plugin-opener = "2.5.0"
+uuid = { version = "1", features = ["v4"] }
+walkdir = "2"
