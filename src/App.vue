@@ -40,6 +40,8 @@ const toolbar = [
   ["blockMath", "∫", "块级公式"],
 ] as const;
 
+const TODO_MARKER = "[[desktop-note:todo]]";
+
 function currentSurface() {
   const params = new URLSearchParams(window.location.search);
   return {
@@ -61,15 +63,23 @@ const query = ref("");
 const viewMode = ref<ViewMode>("split");
 const saveState = ref<"idle" | "dirty" | "saving" | "saved" | "error">("idle");
 const settingsOpen = ref(false);
+const createMenuOpen = ref(false);
+const categoryCreateOpen = ref(false);
 const collapsed = ref<Set<string>>(new Set());
 const activeCategory = ref("");
 const newCategory = ref("");
 const error = ref("");
 const textRef = ref<HTMLTextAreaElement | null>(null);
+const swipedItem = ref("");
+const swipeStart = ref<{ key: string; x: number; y: number } | null>(null);
+const suppressSwipeClickUntil = ref(0);
 const openList = ref(false);
 const status = ref("空");
 const editingId = ref<string | null>(null);
 const tileNote = ref<Note | null>(null);
+const tileEditing = ref(true);
+const tileFixed = ref(false);
+const tileStatus = ref<"saved" | "dirty" | "saving" | "error">("saved");
 
 const isMain = computed(() => surface === "main");
 const isPad = computed(() => surface === "pad");
@@ -81,6 +91,20 @@ const selectedExternal = computed(
 const filtered = computed(() => filterNotes(notes.value, query.value));
 const grouped = computed(() => groupNotes(filtered.value, categories.value));
 const isExternal = computed(() => Boolean(selectedExternal.value));
+const isTodoNote = computed(() => content.value.startsWith(TODO_MARKER));
+const todoItems = computed(() => {
+  if (!isTodoNote.value) return [];
+  const raw = content.value.slice(TODO_MARKER.length).replace(/^\r?\n/, "");
+  const lines = raw.split(/\r?\n/);
+  const items = lines.map((line) => {
+    const match = /^\[([ xX])\]\s?(.*)$/.exec(line);
+    return {
+      done: match ? match[1].toLowerCase() === "x" : false,
+      text: match ? match[2] : line,
+    };
+  });
+  return items.length ? items : [{ done: false, text: "" }];
+});
 
 async function refresh() {
   const [nextNotes, nextCategories] = await Promise.all([api.listNotes(), api.listCategories()]);
@@ -127,6 +151,7 @@ async function bootstrapTile() {
   const [loadedConfig, note] = await Promise.all([api.getConfig(), api.getNote(id)]);
   config.value = loadedConfig;
   tileNote.value = note;
+  tileStatus.value = "saved";
 }
 
 onMounted(() => {
@@ -160,10 +185,76 @@ watch([content, title, status], () => {
   window.setTimeout(() => void savePad(), 900);
 });
 
+watch([() => tileNote.value?.title, () => tileNote.value?.content, tileStatus], () => {
+  if (!config.value?.noteSurfaceAutoSave || tileStatus.value !== "dirty" || !isTile.value) return;
+  window.setTimeout(() => void saveTileNote(), 900);
+});
+
 async function createBlank() {
   const note = await api.createNote({ title: "无标题笔记", content: "", category: activeCategory.value });
   notes.value = [metadataFromNote(note), ...notes.value];
   await loadNote(note.id);
+}
+
+async function createTodoNote() {
+  const note = await api.createNote({
+    title: "待办事项",
+    content: `${TODO_MARKER}\n[ ] `,
+    category: activeCategory.value,
+  });
+  notes.value = [metadataFromNote(note), ...notes.value];
+  createMenuOpen.value = false;
+  await loadNote(note.id);
+}
+
+function writeTodoItems(items: Array<{ done: boolean; text: string }>) {
+  content.value = `${TODO_MARKER}\n${items.map((item) => `[${item.done ? "x" : " "}] ${item.text}`).join("\n")}`;
+  saveState.value = "dirty";
+}
+
+function updateTodoText(index: number, value: string) {
+  const items = [...todoItems.value];
+  items[index] = { ...items[index], text: value };
+  writeTodoItems(items);
+}
+
+function toggleTodoItem(index: number) {
+  const items = [...todoItems.value];
+  items[index] = { ...items[index], done: !items[index].done };
+  writeTodoItems(items);
+}
+
+function addTodoItem(index = todoItems.value.length - 1) {
+  const items = [...todoItems.value];
+  items.splice(index + 1, 0, { done: false, text: "" });
+  writeTodoItems(items);
+}
+
+function removeTodoItem(index: number) {
+  const items = todoItems.value.filter((_, itemIndex) => itemIndex !== index);
+  writeTodoItems(items.length ? items : [{ done: false, text: "" }]);
+}
+
+function handleTodoKeydown(event: KeyboardEvent, index: number) {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    addTodoItem(index);
+    void nextTick(() => {
+      const nextInput = document.querySelector<HTMLInputElement>(`[data-todo-index="${index + 1}"]`);
+      nextInput?.focus();
+    });
+    return;
+  }
+  if (event.key === "Backspace" && !todoItems.value[index]?.text && todoItems.value.length > 1) {
+    event.preventDefault();
+    removeTodoItem(index);
+    void nextTick(() => {
+      const previousInput = document.querySelector<HTMLInputElement>(
+        `[data-todo-index="${Math.max(0, index - 1)}"]`,
+      );
+      previousInput?.focus();
+    });
+  }
 }
 
 async function saveCurrent() {
@@ -189,15 +280,88 @@ async function saveCurrent() {
 
 async function deleteCurrent() {
   if (!selectedId.value || selectedExternal.value) return;
-  await api.deleteNote(selectedId.value);
+  await deleteNoteById(selectedId.value);
+}
+
+async function deleteNoteById(noteId: string) {
+  await api.deleteNote(noteId);
+  swipedItem.value = "";
   const next = await refresh();
-  if (next[0]) await loadNote(next[0].id);
-  else {
+  if (selectedId.value === noteId && next[0]) await loadNote(next[0].id);
+  else if (selectedId.value === noteId) {
     selectedId.value = null;
     title.value = "";
     content.value = "";
     saveState.value = "idle";
   }
+}
+
+async function deleteCategoryByName(category: string) {
+  if (!category) return;
+  categories.value = await api.deleteCategory(category);
+  swipedItem.value = "";
+  if (activeCategory.value === category) activeCategory.value = "";
+  const next = await refresh();
+  if (selectedId.value && !next.some((note) => note.id === selectedId.value)) {
+    if (next[0]) await loadNote(next[0].id);
+    else {
+      selectedId.value = null;
+      title.value = "";
+      content.value = "";
+      saveState.value = "idle";
+    }
+  }
+}
+
+function swipeKey(type: "category" | "note", id: string) {
+  return `${type}:${id || "none"}`;
+}
+
+function startSwipe(event: PointerEvent, key: string) {
+  if (key === swipeKey("category", "")) return;
+  swipeStart.value = { key, x: event.clientX, y: event.clientY };
+}
+
+function moveSwipe(event: PointerEvent) {
+  if (!swipeStart.value) return;
+  const deltaX = event.clientX - swipeStart.value.x;
+  const deltaY = Math.abs(event.clientY - swipeStart.value.y);
+  if (deltaX > 34 && deltaY < 26) {
+    swipedItem.value = swipeStart.value.key;
+    suppressSwipeClickUntil.value = Date.now() + 350;
+  }
+}
+
+function endSwipe() {
+  swipeStart.value = null;
+}
+
+function shouldSuppressSwipeClick() {
+  return Date.now() < suppressSwipeClickUntil.value;
+}
+
+async function openSwipedNote(noteId: string) {
+  if (shouldSuppressSwipeClick()) return;
+  const key = swipeKey("note", noteId);
+  if (swipedItem.value === key) {
+    swipedItem.value = "";
+    return;
+  }
+  swipedItem.value = "";
+  await loadNote(noteId);
+}
+
+function toggleSwipedCategory(category: string) {
+  if (shouldSuppressSwipeClick()) return;
+  const key = swipeKey("category", category);
+  if (swipedItem.value === key) {
+    swipedItem.value = "";
+    return;
+  }
+  swipedItem.value = "";
+  collapsed.value = collapsed.value.has(category)
+    ? new Set([...collapsed.value].filter((item) => item !== category))
+    : new Set([...collapsed.value, category]);
 }
 
 async function importMarkdown() {
@@ -245,11 +409,46 @@ function applyFormat(action: string) {
   });
 }
 
+function toggleTask(index: number) {
+  let current = -1;
+  const lines = content.value.split("\n");
+  const next = lines.map((line) => {
+    const match = /^(\s*[-*]\s+\[)([ xX])(\]\s+.*)$/.exec(line);
+    if (!match) return line;
+    current += 1;
+    if (current !== index) return line;
+    return `${match[1]}${match[2].toLowerCase() === "x" ? " " : "x"}${match[3]}`;
+  });
+  content.value = next.join("\n");
+  saveState.value = "dirty";
+}
+
+function handleEditorKeydown(event: KeyboardEvent) {
+  if (event.key !== "Enter" || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) return;
+  const textarea = textRef.value;
+  if (!textarea) return;
+  const lineStart = content.value.lastIndexOf("\n", textarea.selectionStart - 1) + 1;
+  const line = content.value.slice(lineStart, textarea.selectionStart);
+  if (!/^\s*[-*]\s+\[[ xX]\]\s+/.test(line)) return;
+  event.preventDefault();
+  const insert = "\n- [ ] ";
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  content.value = content.value.slice(0, start) + insert + content.value.slice(end);
+  saveState.value = "dirty";
+  void nextTick(() => {
+    textarea.focus();
+    textarea.setSelectionRange(start + insert.length, start + insert.length);
+  });
+}
+
 async function addCategory() {
   const value = newCategory.value.trim();
   if (!value) return;
   categories.value = await api.createCategory(value);
   newCategory.value = "";
+  createMenuOpen.value = false;
+  categoryCreateOpen.value = false;
 }
 
 async function moveSelected(category: string) {
@@ -290,6 +489,39 @@ function contentKb(value: string) {
 async function copyTileContent() {
   if (tileNote.value) await navigator.clipboard.writeText(tileNote.value.content);
 }
+
+function updateTileTitle(value: string) {
+  if (!tileNote.value) return;
+  tileNote.value = { ...tileNote.value, title: value };
+  tileStatus.value = "dirty";
+}
+
+function updateTileContent(value: string) {
+  if (!tileNote.value) return;
+  tileNote.value = { ...tileNote.value, content: value };
+  tileStatus.value = "dirty";
+}
+
+async function saveTileNote() {
+  if (!tileNote.value || tileStatus.value === "saving") return;
+  tileStatus.value = "saving";
+  try {
+    tileNote.value = await api.updateNote(tileNote.value.id, {
+      title: tileNote.value.title,
+      content: tileNote.value.content,
+      category: tileNote.value.category,
+    });
+    tileStatus.value = "saved";
+  } catch (err) {
+    tileStatus.value = "error";
+    error.value = getErrorMessage(err);
+  }
+}
+
+async function toggleTileFixed() {
+  tileFixed.value = !tileFixed.value;
+  await appWindow.setAlwaysOnTop(!tileFixed.value);
+}
 </script>
 
 <template>
@@ -314,9 +546,40 @@ async function copyTileContent() {
       <div class="window-bar" data-drag-region>
         <strong>云笺阁</strong>
         <div>
-          <button title="快捷便签" @click="api.openNotepadWindow()">＋</button>
+          <button
+            title="新建"
+            @click="
+              createMenuOpen = !createMenuOpen;
+              categoryCreateOpen = false;
+            "
+          >
+            ＋
+          </button>
           <button title="设置" @click="settingsOpen = true">⚙</button>
         </div>
+      </div>
+      <div v-if="createMenuOpen" class="create-menu">
+        <template v-if="!categoryCreateOpen">
+          <button @click="api.openNotepadWindow(); createMenuOpen = false">快捷便签</button>
+          <button @click="createTodoNote">待办便签</button>
+          <button @click="categoryCreateOpen = true">新增分类</button>
+        </template>
+        <template v-else>
+          <input
+            v-model="newCategory"
+            placeholder="分类名称"
+            autofocus
+            @keydown.enter="addCategory"
+            @keydown.esc="
+              categoryCreateOpen = false;
+              newCategory = '';
+            "
+          />
+          <div class="create-menu-actions">
+            <button @click="categoryCreateOpen = false; newCategory = ''">取消</button>
+            <button @click="addCategory">添加</button>
+          </div>
+        </template>
       </div>
       <div class="sidebar-actions">
         <button @click="createBlank">新建</button>
@@ -324,35 +587,49 @@ async function copyTileContent() {
         <button @click="openExternal">外部</button>
       </div>
       <input v-model="query" class="search" placeholder="搜索笔记、内容或分类" />
-      <div class="category-create">
-        <input v-model="newCategory" placeholder="新增分类" @keydown.enter="addCategory" />
-        <button @click="addCategory">+</button>
-      </div>
       <div class="note-list">
         <section v-for="[category, items] in grouped" :key="category || 'none'" class="category-block">
-          <button
-            class="category-title"
-            @click="
-              collapsed.has(category)
-                ? collapsed = new Set([...collapsed].filter((item) => item !== category))
-                : collapsed = new Set([...collapsed, category])
-            "
-          >
-            <span>{{ category || "未分类" }}</span>
-            <b>{{ items.length }}</b>
-          </button>
-          <template v-if="!collapsed.has(category)">
+          <div :class="['swipe-row', swipedItem === swipeKey('category', category) ? 'revealed' : '']">
             <button
+              v-if="category"
+              class="swipe-delete"
+              @click="deleteCategoryByName(category)"
+            >
+              删除
+            </button>
+            <button
+              class="category-title swipe-content"
+              @pointerdown="startSwipe($event, swipeKey('category', category))"
+              @pointermove="moveSwipe"
+              @pointerup="endSwipe"
+              @pointercancel="endSwipe"
+              @click="toggleSwipedCategory(category)"
+            >
+              <span>{{ category || "未分类" }}</span>
+              <b>{{ items.length }}</b>
+            </button>
+          </div>
+          <template v-if="!collapsed.has(category)">
+            <div
               v-for="note in items"
               :key="note.id"
-              :class="['note-item', selectedId === note.id ? 'selected' : '']"
-              @click="loadNote(note.id)"
-              @contextmenu.prevent="moveSelected(category)"
+              :class="['swipe-row', 'note-swipe-row', swipedItem === swipeKey('note', note.id) ? 'revealed' : '']"
             >
-              <strong>{{ noteTitle(note) }}</strong>
-              <span>{{ note.preview || "空白笔记" }}</span>
-              <small>{{ formatShortDate(note.updatedAt) }} · {{ note.wordCount }} 字</small>
-            </button>
+              <button class="swipe-delete" @click="deleteNoteById(note.id)">删除</button>
+              <button
+                :class="['note-item', 'swipe-content', selectedId === note.id ? 'selected' : '']"
+                @pointerdown="startSwipe($event, swipeKey('note', note.id))"
+                @pointermove="moveSwipe"
+                @pointerup="endSwipe"
+                @pointercancel="endSwipe"
+                @click="openSwipedNote(note.id)"
+                @contextmenu.prevent="moveSelected(category)"
+              >
+                <strong>{{ noteTitle(note) }}</strong>
+                <span>{{ note.preview || "空白笔记" }}</span>
+                <small>{{ formatShortDate(note.updatedAt) }} · {{ note.wordCount }} 字</small>
+              </button>
+            </div>
           </template>
         </section>
         <button
@@ -377,7 +654,7 @@ async function copyTileContent() {
 
     <main class="editor-shell">
       <header class="titlebar" data-drag-region>
-        <div class="titlebar-title">Windows 现代便签系统</div>
+        <div class="titlebar-title" aria-hidden="true"></div>
         <div class="titlebar-actions">
           <button @click="appWindow.minimize()">−</button>
           <button @click="appWindow.toggleMaximize()">□</button>
@@ -396,12 +673,13 @@ async function copyTileContent() {
           <option value="">未分类</option>
           <option v-for="category in categories" :key="category" :value="category">{{ category }}</option>
         </select>
-        <div class="format-buttons">
+        <button v-if="isTodoNote" class="todo-toolbar-add" @click="addTodoItem()">新增待办</button>
+        <div v-if="!isTodoNote" class="format-buttons">
           <button v-for="[action, label, tip] in toolbar" :key="action" :title="tip" @click="applyFormat(action)">
             {{ label }}
           </button>
         </div>
-        <div class="segmented mode-tabs">
+        <div v-if="!isTodoNote" class="segmented mode-tabs">
           <button
             v-for="mode in (['edit', 'split', 'preview'] as ViewMode[])"
             :key="mode"
@@ -431,7 +709,26 @@ async function copyTileContent() {
         <span>{{ countChars(content) }} 字</span>
         <span :class="['save-state', saveState]">{{ saveState }}</span>
       </div>
-      <div :class="['workspace', viewMode]">
+      <div v-if="isTodoNote" class="todo-workspace">
+        <div class="todo-list-editor">
+          <label
+            v-for="(item, index) in todoItems"
+            :key="index"
+            :class="['todo-row', item.done ? 'done' : '']"
+          >
+            <input type="checkbox" :checked="item.done" @change="toggleTodoItem(index)" />
+            <input
+              :data-todo-index="index"
+              :value="item.text"
+              placeholder="输入待办事项"
+              @input="updateTodoText(index, ($event.target as HTMLInputElement).value)"
+              @keydown="handleTodoKeydown($event, index)"
+            />
+            <button title="删除待办" @click.prevent="removeTodoItem(index)">×</button>
+          </label>
+        </div>
+      </div>
+      <div v-else :class="['workspace', viewMode]">
         <textarea
           v-if="viewMode === 'edit' || viewMode === 'split'"
           ref="textRef"
@@ -440,14 +737,20 @@ async function copyTileContent() {
           :style="{ fontSize: `${config.fontSize}px`, tabSize: config.tabIndentSize }"
           placeholder="开始写作……"
           @input="saveState = 'dirty'"
+          @keydown="handleEditorKeydown"
         />
         <div v-if="viewMode === 'preview' || viewMode === 'split'" class="preview-pane">
-          <MarkdownPreview :content="content" :font-size="config.fontSize" :render-html="config.renderHtmlMarkdown" />
+          <MarkdownPreview
+            :content="content"
+            :font-size="config.fontSize"
+            :render-html="config.renderHtmlMarkdown"
+            @toggle-task="toggleTask"
+          />
         </div>
       </div>
       <footer class="statusbar">
-        <span>Ln {{ content.split("\n").length }}</span>
-        <span>Markdown + LaTeX</span>
+        <span>{{ isTodoNote ? `${todoItems.length} 项待办` : `Ln ${content.split("\n").length}` }}</span>
+        <span>{{ isTodoNote ? "Todo" : "Markdown + LaTeX" }}</span>
         <span>UTF-8</span>
         <span>{{ contentKb(content) }} KB</span>
       </footer>
@@ -500,8 +803,13 @@ async function copyTileContent() {
     :color="config.tileColorMode === 'custom' ? config.tileColor : '#f8f5ec'"
     :font-size="config.surfaceFontSize"
     :render-markdown="config.tileRenderMarkdown"
+    :editing="tileEditing"
+    :fixed="tileFixed"
     @copy="copyTileContent"
-    @edit="api.openNotepadWindow()"
-    @close="appWindow.close()"
+    @save="saveTileNote"
+    @toggle-fixed="toggleTileFixed"
+    @toggle-edit="tileEditing = !tileEditing"
+    @update-title="updateTileTitle"
+    @update-content="updateTileContent"
   />
 </template>

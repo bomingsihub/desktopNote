@@ -6,6 +6,7 @@ const crypto = require("node:crypto");
 let mainWindow = null;
 let tray = null;
 const devUrl = process.env.VITE_DEV_SERVER_URL;
+const TODO_MARKER = "[[desktop-note:todo]]";
 
 function appDir() {
   const dir = app.getPath("userData");
@@ -40,7 +41,15 @@ function now() {
 }
 
 function stripMarkdown(content) {
-  return content.replace(/[#>*_`~[\]()]/g, "").split(/\s+/).filter(Boolean).join(" ");
+  return content
+    .replace(TODO_MARKER, "")
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^\[[ xX]\]\s?/, ""))
+    .join(" ")
+    .replace(/[#>*_`~[\]()]/g, "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .join(" ");
 }
 
 function countChars(content) {
@@ -394,6 +403,10 @@ function setupIpc() {
     if (!window) return;
     if (window.isMaximized()) window.unmaximize();
     else window.maximize();
+  });
+  handle("window_set_always_on_top", ({ id, value }) => {
+    const window = BrowserWindow.fromId(id);
+    if (window) window.setAlwaysOnTop(Boolean(value));
   });
   handle("window_close", ({ id }) => BrowserWindow.fromId(id)?.close());
   handle("window_hide", ({ id }) => BrowserWindow.fromId(id)?.hide());

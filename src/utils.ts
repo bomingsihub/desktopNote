@@ -1,5 +1,15 @@
 import type { Note, NoteMetadata, ViewMode } from "./types";
 
+const TODO_MARKER = "[[desktop-note:todo]]";
+
+function stripTodoSyntax(content: string): string {
+  return content
+    .replace(TODO_MARKER, "")
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^\[[ xX]\]\s?/, ""))
+    .join(" ");
+}
+
 export function normalizeViewMode(mode: string): ViewMode {
   return mode === "edit" || mode === "preview" || mode === "split" ? mode : "split";
 }
@@ -21,7 +31,7 @@ export function metadataFromNote(note: Note): NoteMetadata {
     createdAt: note.createdAt,
     updatedAt: note.updatedAt,
     wordCount: note.wordCount,
-    preview: note.content.replace(/[#>*_`~\[\]()]|!\[[^\]]*\]\([^)]*\)/g, "").slice(0, 120),
+    preview: stripTodoSyntax(note.content).replace(/[#>*_`~\[\]()]|!\[[^\]]*\]\([^)]*\)/g, "").slice(0, 120),
   };
 }
 
@@ -92,6 +102,7 @@ export function insertMarkdown(
     heading: "标题",
     ul: "列表项",
     ol: "列表项",
+    todo: "待办事项",
     code: "代码",
     quote: "引用文本",
     inlineMath: "E=mc^2",
@@ -116,6 +127,14 @@ export function insertMarkdown(
       return { value: `${before}- ${s}${after}`, start: start + 2, end: start + 2 + s.length };
     case "ol":
       return { value: `${before}1. ${s}${after}`, start: start + 3, end: start + 3 + s.length };
+    case "todo": {
+      const items = s
+        .split(/\r?\n/)
+        .map((line) => line.replace(/^[-*]\s+(?:\[[ xX]\]\s*)?/, "").trim())
+        .filter(Boolean);
+      const todoText = (items.length ? items : [fallback.todo]).map((line) => `- [ ] ${line}`).join("\n");
+      return { value: before + todoText + after, start: start + 6, end: start + todoText.length };
+    }
     case "code":
       return selected.includes("\n") ? wrap("```\n", "\n```") : wrap("`");
     case "quote":
