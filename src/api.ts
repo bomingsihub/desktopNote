@@ -1,12 +1,39 @@
-import { invoke } from "@tauri-apps/api/core";
-import { open, save } from "@tauri-apps/plugin-dialog";
 import type { AppConfig, Note, NoteMetadata, SaveNoteRequest } from "./types";
 
-export const isTauri = "__TAURI_INTERNALS__" in window;
+declare global {
+  interface Window {
+    desktopNote: {
+      invoke<T>(channel: string, payload?: unknown): Promise<T>;
+      on(channel: string, listener: (payload: unknown) => void): () => void;
+      windowId(): number;
+    };
+  }
+}
+
+export const isDesktop = "desktopNote" in window;
+
+function invoke<T>(channel: string, payload?: unknown): Promise<T> {
+  return window.desktopNote.invoke<T>(channel, payload);
+}
 
 export function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
+
+export function listen(channel: string, listener: (payload: unknown) => void): () => void {
+  return window.desktopNote.on(channel, listener);
+}
+
+function currentWindowId() {
+  return window.desktopNote.windowId();
+}
+
+export const appWindow = {
+  minimize: () => invoke<void>("window_minimize", { id: currentWindowId() }),
+  toggleMaximize: () => invoke<void>("window_toggle_maximize", { id: currentWindowId() }),
+  close: () => invoke<void>("window_close", { id: currentWindowId() }),
+  hide: () => invoke<void>("window_hide", { id: currentWindowId() }),
+};
 
 export const api = {
   getConfig: () => invoke<AppConfig>("get_config"),
@@ -37,32 +64,36 @@ export const api = {
 };
 
 export async function chooseMarkdownImport(): Promise<string | null> {
-  const path = await open({
-    multiple: false,
-    directory: false,
-    filters: [{ name: "Markdown", extensions: ["md"] }],
+  return invoke<string | null>("dialog_open", {
+    options: {
+      properties: ["openFile"],
+      filters: [{ name: "Markdown", extensions: ["md"] }],
+    },
   });
-  return typeof path === "string" ? path : null;
 }
 
 export async function chooseMarkdownExport(defaultPath: string): Promise<string | null> {
-  const path = await save({
-    defaultPath,
-    filters: [{ name: "Markdown", extensions: ["md"] }],
+  return invoke<string | null>("dialog_save", {
+    options: {
+      defaultPath,
+      filters: [{ name: "Markdown", extensions: ["md"] }],
+    },
   });
-  return typeof path === "string" ? path : null;
 }
 
 export async function chooseExternalTextFile(): Promise<string | null> {
-  const path = await open({
-    multiple: false,
-    directory: false,
-    filters: [{ name: "Text", extensions: ["md", "txt"] }],
+  return invoke<string | null>("dialog_open", {
+    options: {
+      properties: ["openFile"],
+      filters: [{ name: "Text", extensions: ["md", "txt"] }],
+    },
   });
-  return typeof path === "string" ? path : null;
 }
 
 export async function chooseNotesDirectory(): Promise<string | null> {
-  const path = await open({ multiple: false, directory: true });
-  return typeof path === "string" ? path : null;
+  return invoke<string | null>("dialog_open", {
+    options: {
+      properties: ["openDirectory"],
+    },
+  });
 }

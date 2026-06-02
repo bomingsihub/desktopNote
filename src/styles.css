@@ -42,6 +42,7 @@ input,
 textarea,
 select {
   font: inherit;
+  -webkit-app-region: no-drag;
 }
 
 button {
@@ -113,10 +114,12 @@ select {
 .pad-shell header,
 .tile-header {
   user-select: none;
+  -webkit-app-region: drag;
 }
 
 .window-bar,
 .titlebar {
+  -webkit-app-region: drag;
   height: 44px;
   display: flex;
   align-items: center;
