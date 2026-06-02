@@ -293,7 +293,7 @@ async function copyTileContent() {
 </script>
 
 <template>
-  <div v-if="isMain && !config" class="boot">正在启动花笺...</div>
+  <div v-if="isMain && !config" class="boot">正在启动云笺阁...</div>
   <div v-else-if="isPad && !config" class="boot">正在打开快捷便签...</div>
   <div v-else-if="isTile && (!tileNote || !config)" class="boot">正在打开磁贴...</div>
 
@@ -312,7 +312,7 @@ async function copyTileContent() {
     <div class="background-dim" :style="{ opacity: config.backgroundDim }" />
     <aside class="sidebar">
       <div class="window-bar" data-drag-region>
-        <strong>花笺</strong>
+        <strong>云笺阁</strong>
         <div>
           <button title="快捷便签" @click="api.openNotepadWindow()">＋</button>
           <button title="设置" @click="settingsOpen = true">⚙</button>

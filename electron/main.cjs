@@ -309,7 +309,7 @@ function registerShortcuts() {
 
 function setupTray() {
   tray = new Tray(path.join(__dirname, "icons", "icon.png"));
-  tray.setToolTip("花笺便签");
+  tray.setToolTip("云笺阁");
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: "显示/隐藏", click: toggleMainWindow },

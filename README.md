@@ -1,4 +1,4 @@
-# Windows 花笺风格便签系统
+# Windows 云笺阁便签系统
 
 这是一个 Windows 桌面便签应用，使用 Node.js + Electron + Vite + Vue 3 构建。当前仓库保留了旧版 Python/Tkinter 原型文件，但主应用已经迁移到 Node.js 桌面工程结构。
 
