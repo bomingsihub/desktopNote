@@ -83,17 +83,6 @@ select {
   box-shadow: 0 20px 80px rgba(44, 40, 30, 0.16);
 }
 
-.background-layer,
-.background-dim {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-}
-
-.background-dim {
-  background: var(--cloud);
-}
-
 .sidebar {
   position: relative;
   z-index: 1;
@@ -183,6 +172,54 @@ select {
   color: var(--bamboo);
   background: var(--bamboo-soft);
   border-color: color-mix(in srgb, var(--bamboo) 28%, transparent);
+}
+
+.todo-add-wrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.todo-add-wrap > .todo-toolbar-add {
+  width: auto;
+  min-width: max-content;
+  flex: 0 0 auto;
+  padding: 0 12px;
+  white-space: nowrap;
+  color: var(--bamboo);
+  background: var(--bamboo-soft);
+  border: 1px solid color-mix(in srgb, var(--bamboo) 28%, transparent);
+  font-size: 12px;
+}
+
+.todo-bucket-menu {
+  position: absolute;
+  z-index: 5;
+  top: 34px;
+  left: 0;
+  width: 108px;
+  display: grid;
+  gap: 5px;
+  padding: 6px;
+  border: 1px solid color-mix(in srgb, var(--paper-deep) 70%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--cloud) 98%, transparent);
+  box-shadow: 0 12px 28px rgba(35, 32, 24, 0.12);
+}
+
+.todo-bucket-menu button {
+  width: 100%;
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 6px;
+  color: var(--ink-soft);
+  background: transparent;
+  text-align: left;
+  font-size: 12px;
+}
+
+.todo-bucket-menu button:hover {
+  color: var(--bamboo);
+  background: var(--bamboo-soft);
 }
 
 .search,
@@ -545,7 +582,7 @@ select {
 .todo-row {
   min-height: 38px;
   display: grid;
-  grid-template-columns: 22px minmax(0, 1fr) 28px;
+  grid-template-columns: 22px 44px minmax(0, 1fr) 28px;
   align-items: center;
   gap: 8px;
   padding: 4px 8px;
@@ -561,6 +598,18 @@ select {
   height: 15px;
   margin: 0;
   accent-color: var(--bamboo);
+}
+
+.todo-bucket-label {
+  display: inline-grid;
+  place-items: center;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 7px;
+  color: var(--bamboo);
+  background: var(--bamboo-soft);
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .todo-row input[type="text"],
@@ -653,9 +702,14 @@ select {
   text-decoration: line-through;
 }
 
-.settings-panel {
+.settings-overlay {
   position: absolute;
   z-index: 4;
+  inset: 0;
+}
+
+.settings-panel {
+  position: absolute;
   right: 0;
   top: 0;
   bottom: 0;
@@ -663,9 +717,16 @@ select {
   display: flex;
   flex-direction: column;
   overflow: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   background: color-mix(in srgb, var(--cloud) 96%, transparent);
   border-left: 1px solid var(--paper-deep);
   box-shadow: -12px 0 40px rgba(30, 28, 22, 0.16);
+}
+
+.settings-panel::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .settings-panel header {
@@ -930,6 +991,10 @@ select {
   height: 0;
 }
 
+.tile-body:has(.tile-todo-shell) {
+  padding-left: 0;
+}
+
 .tile-editor {
   width: 100%;
   height: 100%;
@@ -953,10 +1018,111 @@ select {
   color: rgba(68, 63, 53, 0.42);
 }
 
+.tile-todo-shell {
+  min-height: 100%;
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  gap: 0;
+}
+
+.tile-todo-buckets {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 0;
+}
+
+.tile-todo-bucket {
+  position: relative;
+  width: 66px;
+  min-width: 0;
+  height: 32px;
+  padding: 0 0 0 24px;
+  border-radius: 0;
+  color: rgba(68, 63, 53, 0.62);
+  background: transparent;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tile-todo-bucket span {
+  position: relative;
+  z-index: 1;
+}
+
+.tile-todo-bucket:hover,
+.tile-todo-bucket.active {
+  color: #356b48;
+}
+
+.tile-todo-bucket.active {
+  width: 76px;
+  color: #356b48;
+}
+
+.tile-todo-bucket.active::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 0 0;
+  z-index: 0;
+  background: rgba(255, 255, 255, 0.18);
+  clip-path: polygon(0 0, calc(100% - 9px) 0, 100% 50%, calc(100% - 9px) 100%, 0 100%);
+}
+
+.tile-todo-bucket.custom {
+  width: 66px;
+  margin-left: 10px;
+  padding-left: 14px;
+  color: rgba(68, 63, 53, 0.78);
+}
+
+.tile-todo-bucket.custom::before {
+  content: "";
+  position: absolute;
+  inset: 3px 0;
+  z-index: 0;
+  background: rgba(255, 255, 255, 0.12);
+  clip-path: polygon(0 0, calc(100% - 7px) 0, 100% 50%, calc(100% - 7px) 100%, 0 100%);
+}
+
+.tile-todo-bucket.custom.active::before {
+  inset: 0;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.tile-todo-buckets .tile-todo-bucket-add {
+  width: 42px;
+  min-width: 0;
+  height: 32px;
+  margin: 10px 0 0 20px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  border: 1px solid rgba(68, 63, 53, 0.22);
+  color: rgba(68, 63, 53, 0.54);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 20px;
+  line-height: 1;
+  text-align: center;
+}
+
+.tile-todo-buckets .tile-todo-bucket-add:hover {
+  color: #356b48;
+  background: rgba(255, 255, 255, 0.12);
+}
+
 .tile-todo-list {
   display: grid;
+  align-content: start;
   gap: 7px;
   padding-top: 2px;
+  padding-right: 17px;
 }
 
 .tile-todo-row {

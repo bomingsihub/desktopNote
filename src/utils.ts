@@ -1,12 +1,13 @@
 import type { Note, NoteMetadata, ViewMode } from "./types";
 
 const TODO_MARKER = "[[desktop-note:todo]]";
+const TODO_META_RE = /\s*<!--dn-(bucket|created):[^>]+-->/g;
 
 function stripTodoSyntax(content: string): string {
   return content
     .replace(TODO_MARKER, "")
     .split(/\r?\n/)
-    .map((line) => line.replace(/^\[[ xX]\]\s?/, ""))
+    .map((line) => line.replace(/^\[[ xX]\]\s?/, "").replace(TODO_META_RE, ""))
     .join(" ");
 }
 

@@ -1,0 +1,20 @@
+directories:
+  output: release
+  buildResources: build
+appId: com.yunjian.desktopnote
+productName: 云笺阁
+files:
+  - filter:
+      - dist/**/*
+      - electron/**/*
+      - package.json
+win:
+  signAndEditExecutable: false
+  target:
+    - nsis
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+electronVersion: 33.4.11

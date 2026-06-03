@@ -41,6 +41,42 @@ const toolbar = [
 ] as const;
 
 const TODO_MARKER = "[[desktop-note:todo]]";
+const TODO_DEFAULT_BUCKET = "今日";
+const TODO_BUCKETS = ["今日", "未来", "昨日"] as const;
+const TODO_META_RE = /<!--dn-(bucket|created):([^>]+)-->/g;
+
+type TodoItem = {
+  done: boolean;
+  text: string;
+  bucket: string;
+  createdAt: string;
+};
+
+function newTodoItem(bucket = TODO_DEFAULT_BUCKET): TodoItem {
+  return { done: false, text: "", bucket, createdAt: new Date().toISOString() };
+}
+
+function readTodoLine(line: string, index: number): TodoItem {
+  const match = /^\[([ xX])\]\s?(.*)$/.exec(line);
+  const body = match ? match[2] : line;
+  const meta = Object.fromEntries(
+    Array.from(body.matchAll(TODO_META_RE), ([, key, value]) => [key, decodeURIComponent(value)]),
+  );
+  const text = body.replace(TODO_META_RE, "").trimEnd();
+  return {
+    done: match ? match[1].toLowerCase() === "x" : false,
+    text,
+    bucket: meta.bucket || TODO_DEFAULT_BUCKET,
+    createdAt: meta.created || `${index}`,
+  };
+}
+
+function writeTodoLine(item: TodoItem) {
+  const bucket = item.bucket || TODO_DEFAULT_BUCKET;
+  const bucketMeta = bucket === TODO_DEFAULT_BUCKET ? "" : ` <!--dn-bucket:${encodeURIComponent(bucket)}-->`;
+  const createdMeta = ` <!--dn-created:${encodeURIComponent(item.createdAt || new Date().toISOString())}-->`;
+  return `[${item.done ? "x" : " "}] ${item.text}${bucketMeta}${createdMeta}`;
+}
 
 function currentSurface() {
   const params = new URLSearchParams(window.location.search);
@@ -48,6 +84,12 @@ function currentSurface() {
     surface: params.get("surface") ?? "main",
     id: params.get("id") ?? "",
   };
+}
+
+function closeCreateMenu() {
+  createMenuOpen.value = false;
+  categoryCreateOpen.value = false;
+  newCategory.value = "";
 }
 
 const { surface, id } = currentSurface();
@@ -64,6 +106,7 @@ const viewMode = ref<ViewMode>("split");
 const saveState = ref<"idle" | "dirty" | "saving" | "saved" | "error">("idle");
 const settingsOpen = ref(false);
 const createMenuOpen = ref(false);
+const todoBucketMenuOpen = ref(false);
 const categoryCreateOpen = ref(false);
 const collapsed = ref<Set<string>>(new Set());
 const activeCategory = ref("");
@@ -96,14 +139,14 @@ const todoItems = computed(() => {
   if (!isTodoNote.value) return [];
   const raw = content.value.slice(TODO_MARKER.length).replace(/^\r?\n/, "");
   const lines = raw.split(/\r?\n/);
-  const items = lines.map((line) => {
-    const match = /^\[([ xX])\]\s?(.*)$/.exec(line);
-    return {
-      done: match ? match[1].toLowerCase() === "x" : false,
-      text: match ? match[2] : line,
-    };
-  });
-  return items.length ? items : [{ done: false, text: "" }];
+  const items = lines.map(readTodoLine);
+  return items.length ? items : [newTodoItem()];
+});
+const todoBuckets = computed(() => {
+  const customBuckets = todoItems.value
+    .map((item) => item.bucket || TODO_DEFAULT_BUCKET)
+    .filter((bucket) => !TODO_BUCKETS.includes(bucket as (typeof TODO_BUCKETS)[number]));
+  return [...TODO_BUCKETS, ...Array.from(new Set(customBuckets))];
 });
 
 async function refresh() {
@@ -119,6 +162,7 @@ async function loadNote(noteId: string) {
   title.value = note.title;
   content.value = note.content;
   saveState.value = "saved";
+  todoBucketMenuOpen.value = false;
   error.value = "";
 }
 
@@ -135,7 +179,11 @@ async function bootstrapMain() {
     notes.value = loadedNotes;
     categories.value = loadedCategories;
     collapsed.value = new Set(loadedCategories);
-    if (loadedNotes[0]) await loadNote(loadedNotes[0].id);
+    if (loadedNotes[0]) {
+      await loadNote(loadedNotes[0].id);
+    } else {
+      await createBlank();
+    }
   } catch (err) {
     error.value = getErrorMessage(err);
   }
@@ -162,8 +210,33 @@ onMounted(() => {
 
 if (isMain.value) {
   const stop = ref<(() => void) | null>(null);
+  const closeCreateMenuOnOutsideClick = (event: PointerEvent) => {
+    if (!createMenuOpen.value) return;
+    const target = event.target instanceof Element ? event.target : null;
+    if (target?.closest(".create-menu, .create-menu-trigger")) return;
+    closeCreateMenu();
+  };
   onMounted(async () => {
     stop.value = await listen("notes-changed", () => void refresh());
+    document.addEventListener("pointerdown", closeCreateMenuOnOutsideClick);
+  });
+  onUnmounted(() => {
+    stop.value?.();
+    document.removeEventListener("pointerdown", closeCreateMenuOnOutsideClick);
+  });
+}
+
+if (isTile.value) {
+  const stop = ref<(() => void) | null>(null);
+  onMounted(async () => {
+    stop.value = await listen("notes-changed", async () => {
+      if (!id || tileStatus.value !== "saved") return;
+      try {
+        tileNote.value = await api.getNote(id);
+      } catch (err) {
+        tileStatus.value = "error";
+      }
+    });
   });
   onUnmounted(() => {
     stop.value?.();
@@ -194,12 +267,15 @@ async function createBlank() {
   const note = await api.createNote({ title: "无标题笔记", content: "", category: activeCategory.value });
   notes.value = [metadataFromNote(note), ...notes.value];
   await loadNote(note.id);
+  void nextTick(() => {
+    textRef.value?.focus();
+  });
 }
 
 async function createTodoNote() {
   const note = await api.createNote({
     title: "待办事项",
-    content: `${TODO_MARKER}\n[ ] `,
+    content: `${TODO_MARKER}\n${writeTodoLine(newTodoItem())}`,
     category: activeCategory.value,
   });
   notes.value = [metadataFromNote(note), ...notes.value];
@@ -207,8 +283,8 @@ async function createTodoNote() {
   await loadNote(note.id);
 }
 
-function writeTodoItems(items: Array<{ done: boolean; text: string }>) {
-  content.value = `${TODO_MARKER}\n${items.map((item) => `[${item.done ? "x" : " "}] ${item.text}`).join("\n")}`;
+function writeTodoItems(items: TodoItem[]) {
+  content.value = `${TODO_MARKER}\n${items.map(writeTodoLine).join("\n")}`;
   saveState.value = "dirty";
 }
 
@@ -224,15 +300,28 @@ function toggleTodoItem(index: number) {
   writeTodoItems(items);
 }
 
-function addTodoItem(index = todoItems.value.length - 1) {
+function addTodoItem(index = todoItems.value.length - 1, bucket = todoItems.value[index]?.bucket || TODO_DEFAULT_BUCKET) {
   const items = [...todoItems.value];
-  items.splice(index + 1, 0, { done: false, text: "" });
+  items.splice(index + 1, 0, newTodoItem(bucket));
   writeTodoItems(items);
+  const nextIndex = index + 1;
+  void nextTick(() => {
+    document.querySelector<HTMLInputElement>(`[data-todo-index="${nextIndex}"]`)?.focus();
+  });
+}
+
+function addTodoItemForBucket(bucket: string) {
+  const lastIndex = todoItems.value.reduce(
+    (foundIndex, item, index) => ((item.bucket || TODO_DEFAULT_BUCKET) === bucket ? index : foundIndex),
+    -1,
+  );
+  addTodoItem(lastIndex >= 0 ? lastIndex : todoItems.value.length - 1, bucket);
+  todoBucketMenuOpen.value = false;
 }
 
 function removeTodoItem(index: number) {
   const items = todoItems.value.filter((_, itemIndex) => itemIndex !== index);
-  writeTodoItems(items.length ? items : [{ done: false, text: "" }]);
+  writeTodoItems(items.length ? items : [newTodoItem()]);
 }
 
 function handleTodoKeydown(event: KeyboardEvent, index: number) {
@@ -530,23 +619,12 @@ async function toggleTileFixed() {
   <div v-else-if="isTile && (!tileNote || !config)" class="boot">正在打开磁贴...</div>
 
   <div v-else-if="isMain && config" class="app-shell">
-    <div
-      v-if="config.backgroundImagePath"
-      class="background-layer"
-      :style="{
-        backgroundImage: `url('${config.backgroundImagePath}')`,
-        backgroundSize: config.backgroundFit === 'repeat' ? 'auto' : config.backgroundFit,
-        backgroundRepeat: config.backgroundFit === 'repeat' ? 'repeat' : 'no-repeat',
-        backgroundPosition: `${config.backgroundPositionX}% ${config.backgroundPositionY}%`,
-        filter: `blur(${config.backgroundBlur}px) scale(${config.backgroundScale})`,
-      }"
-    />
-    <div class="background-dim" :style="{ opacity: config.backgroundDim }" />
     <aside class="sidebar">
       <div class="window-bar" data-drag-region>
         <strong>云笺阁</strong>
         <div>
           <button
+            class="create-menu-trigger"
             title="新建"
             @click="
               createMenuOpen = !createMenuOpen;
@@ -570,13 +648,10 @@ async function toggleTileFixed() {
             placeholder="分类名称"
             autofocus
             @keydown.enter="addCategory"
-            @keydown.esc="
-              categoryCreateOpen = false;
-              newCategory = '';
-            "
+            @keydown.esc="closeCreateMenu"
           />
           <div class="create-menu-actions">
-            <button @click="categoryCreateOpen = false; newCategory = ''">取消</button>
+            <button @click="closeCreateMenu">取消</button>
             <button @click="addCategory">添加</button>
           </div>
         </template>
@@ -626,7 +701,6 @@ async function toggleTileFixed() {
                 @contextmenu.prevent="moveSelected(category)"
               >
                 <strong>{{ noteTitle(note) }}</strong>
-                <span>{{ note.preview || "空白笔记" }}</span>
                 <small>{{ formatShortDate(note.updatedAt) }} · {{ note.wordCount }} 字</small>
               </button>
             </div>
@@ -663,9 +737,17 @@ async function toggleTileFixed() {
       </header>
       <div v-if="error" class="error-banner">{{ error }}</div>
       <div class="editor-toolbar">
-        <button :disabled="!selectedId" @click="saveCurrent">保存</button>
-        <button :disabled="!selectedId || isExternal" @click="exportMarkdown">导出</button>
-        <button :disabled="!selectedId || isExternal" @click="deleteCurrent">删除</button>
+        <div v-if="isTodoNote" class="todo-add-wrap">
+          <button class="todo-toolbar-add" @click="todoBucketMenuOpen = !todoBucketMenuOpen">新增待办</button>
+          <div v-if="todoBucketMenuOpen" class="todo-bucket-menu">
+            <button v-for="bucket in todoBuckets" :key="bucket" @click="addTodoItemForBucket(bucket)">
+              {{ bucket }}
+            </button>
+          </div>
+        </div>
+        <button v-if="!isTodoNote" :disabled="!selectedId" @click="saveCurrent">保存</button>
+        <button v-if="!isTodoNote" :disabled="!selectedId || isExternal" @click="exportMarkdown">导出</button>
+        <button v-if="!isTodoNote" :disabled="!selectedId || isExternal" @click="deleteCurrent">删除</button>
         <button :disabled="!selectedId || isExternal" @click="selectedId && api.openTileWindow(selectedId)">
           钉到屏幕
         </button>
@@ -673,7 +755,6 @@ async function toggleTileFixed() {
           <option value="">未分类</option>
           <option v-for="category in categories" :key="category" :value="category">{{ category }}</option>
         </select>
-        <button v-if="isTodoNote" class="todo-toolbar-add" @click="addTodoItem()">新增待办</button>
         <div v-if="!isTodoNote" class="format-buttons">
           <button v-for="[action, label, tip] in toolbar" :key="action" :title="tip" @click="applyFormat(action)">
             {{ label }}
@@ -717,6 +798,7 @@ async function toggleTileFixed() {
             :class="['todo-row', item.done ? 'done' : '']"
           >
             <input type="checkbox" :checked="item.done" @change="toggleTodoItem(index)" />
+            <span class="todo-bucket-label">{{ item.bucket }}</span>
             <input
               :data-todo-index="index"
               :value="item.text"
@@ -755,7 +837,9 @@ async function toggleTileFixed() {
         <span>{{ contentKb(content) }} KB</span>
       </footer>
     </main>
-    <SettingsPanel v-if="settingsOpen" :config="config" @change="saveSettings" @close="settingsOpen = false" />
+    <div v-if="settingsOpen" class="settings-overlay" @click="settingsOpen = false">
+      <SettingsPanel :config="config" @change="saveSettings" @close="settingsOpen = false" @click.stop />
+    </div>
   </div>
 
   <div v-else-if="isPad && config" class="pad-shell">

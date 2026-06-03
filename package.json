@@ -1,8 +1,11 @@
 {
   "name": "desktop-note-floral",
   "version": "1.0.0",
+  "description": "Windows desktop note app built with Electron and Vue.",
+  "author": "云笺阁",
   "private": true,
   "type": "module",
+  "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
     "electron": "electron electron/main.cjs",
@@ -29,5 +32,29 @@
     "vite": "^7.1.4",
     "vue-tsc": "^2.2.0",
     "vitest": "^3.2.4"
+  },
+  "build": {
+    "appId": "com.yunjian.desktopnote",
+    "productName": "云笺阁",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
   }
 }

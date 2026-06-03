@@ -51,13 +51,7 @@ export interface AppConfig {
   tileRenderMarkdown: boolean;
   renderHtmlMarkdown: boolean;
   openAtCursor: boolean;
-  backgroundImagePath?: string | null;
-  backgroundFit: "cover" | "contain" | "repeat";
-  backgroundDim: number;
-  backgroundBlur: number;
-  backgroundScale: number;
-  backgroundPositionX: number;
-  backgroundPositionY: number;
+  pinnedTileIds?: string[];
   surfaceWidth?: number | null;
   surfaceHeight?: number | null;
 }

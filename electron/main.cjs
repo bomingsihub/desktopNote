@@ -7,6 +7,7 @@ let mainWindow = null;
 let tray = null;
 const devUrl = process.env.VITE_DEV_SERVER_URL;
 const TODO_MARKER = "[[desktop-note:todo]]";
+const TODO_META_RE = /\s*<!--dn-(bucket|created):[^>]+-->/g;
 
 function appDir() {
   const dir = app.getPath("userData");
@@ -44,7 +45,7 @@ function stripMarkdown(content) {
   return content
     .replace(TODO_MARKER, "")
     .split(/\r?\n/)
-    .map((line) => line.replace(/^\[[ xX]\]\s?/, ""))
+    .map((line) => line.replace(/^\[[ xX]\]\s?/, "").replace(TODO_META_RE, ""))
     .join(" ")
     .replace(/[#>*_`~[\]()]/g, "")
     .split(/\s+/)
@@ -103,13 +104,7 @@ function defaultConfig() {
     tileRenderMarkdown: true,
     renderHtmlMarkdown: false,
     openAtCursor: true,
-    backgroundImagePath: null,
-    backgroundFit: "cover",
-    backgroundDim: 0.2,
-    backgroundBlur: 0,
-    backgroundScale: 1.0,
-    backgroundPositionX: 50,
-    backgroundPositionY: 50,
+    pinnedTileIds: [],
     surfaceWidth: 440,
     surfaceHeight: 360,
   };
@@ -122,7 +117,7 @@ function readJson(file, fallback) {
 
 function readConfig() {
   const file = configPath();
-  if (fs.existsSync(file)) return JSON.parse(fs.readFileSync(file, "utf8"));
+  if (fs.existsSync(file)) return { ...defaultConfig(), ...JSON.parse(fs.readFileSync(file, "utf8")) };
   const config = defaultConfig();
   writeConfig(config);
   return config;
@@ -173,6 +168,31 @@ function loadNote(dir, id) {
 
 function emitNotesChanged() {
   BrowserWindow.getAllWindows().forEach((window) => window.webContents.send("notes-changed"));
+}
+
+function updatePinnedTileIds(updater) {
+  const config = readConfig();
+  const pinnedTileIds = updater(Array.isArray(config.pinnedTileIds) ? config.pinnedTileIds : []);
+  return writeConfig({ ...config, pinnedTileIds: [...new Set(pinnedTileIds)] });
+}
+
+function pinTile(id) {
+  if (!id) return;
+  updatePinnedTileIds((ids) => [...ids, id]);
+}
+
+function unpinTile(id) {
+  if (!id) return;
+  updatePinnedTileIds((ids) => ids.filter((item) => item !== id));
+}
+
+function prunePinnedTiles() {
+  const config = readConfig();
+  const pinnedTileIds = (Array.isArray(config.pinnedTileIds) ? config.pinnedTileIds : []).filter((id) =>
+    fs.existsSync(metadataPath(config.notesDir, id)),
+  );
+  if (pinnedTileIds.length !== (config.pinnedTileIds || []).length) writeConfig({ ...config, pinnedTileIds });
+  return pinnedTileIds;
 }
 
 function listNotes() {
@@ -279,6 +299,10 @@ function createWindow(surface = "main", id = "") {
     });
   }
 
+  browserWindow.on("session-end", () => {
+    app.isQuitting = true;
+  });
+
   return browserWindow;
 }
 
@@ -286,14 +310,23 @@ function openNotepadWindow() {
   return createWindow("pad");
 }
 
-function openTileWindow(id) {
+function openTileWindow(id, shouldPin = true) {
   const existing = BrowserWindow.getAllWindows().find((window) => window.__tileId === id);
   if (existing) {
+    if (shouldPin) pinTile(id);
     existing.focus();
     return;
   }
+  if (shouldPin) pinTile(id);
   const window = createWindow("tile", id);
   window.__tileId = id;
+  window.on("close", () => {
+    if (!app.isQuitting) unpinTile(id);
+  });
+}
+
+function restorePinnedTiles() {
+  for (const id of prunePinnedTiles()) openTileWindow(id, false);
 }
 
 function toggleMainWindow() {
@@ -358,6 +391,10 @@ function setupIpc() {
     const dir = notesDir();
     fs.rmSync(markdownPath(dir, id), { force: true });
     fs.rmSync(metadataPath(dir, id), { force: true });
+    unpinTile(id);
+    BrowserWindow.getAllWindows()
+      .filter((window) => window.__tileId === id)
+      .forEach((window) => window.close());
     emitNotesChanged();
   });
   handle("list_categories", () => listCategories());
@@ -424,8 +461,13 @@ function setupIpc() {
 app.whenReady().then(() => {
   setupIpc();
   createWindow();
+  restorePinnedTiles();
   setupTray();
   registerShortcuts();
+});
+
+app.on("before-quit", () => {
+  app.isQuitting = true;
 });
 
 app.on("window-all-closed", () => {

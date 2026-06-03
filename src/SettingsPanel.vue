@@ -91,22 +91,5 @@ async function chooseDir() {
         <input :value="config.tileColor" @input="set('tileColor', ($event.target as HTMLInputElement).value)" />
       </div>
     </section>
-    <section>
-      <label>背景图片</label>
-      <input :value="config.backgroundImagePath ?? ''" placeholder="图片路径" @input="set('backgroundImagePath', ($event.target as HTMLInputElement).value)" />
-      <div class="segmented">
-        <button
-          v-for="fit in (['cover', 'contain', 'repeat'] as const)"
-          :key="fit"
-          :class="{ active: config.backgroundFit === fit }"
-          @click="set('backgroundFit', fit)"
-        >
-          {{ fit === "cover" ? "填充" : fit === "contain" ? "完整" : "平铺" }}
-        </button>
-      </div>
-      <label class="range-row"><span>遮罩</span><input type="range" min="0" max="100" :value="Math.round(config.backgroundDim * 100)" @input="set('backgroundDim', Number(($event.target as HTMLInputElement).value) / 100)" /><b>{{ Math.round(config.backgroundDim * 100) }}%</b></label>
-      <label class="range-row"><span>模糊</span><input type="range" min="0" max="20" :value="config.backgroundBlur" @input="set('backgroundBlur', Number(($event.target as HTMLInputElement).value))" /><b>{{ config.backgroundBlur }}px</b></label>
-      <label class="range-row"><span>缩放</span><input type="range" min="50" max="200" :value="Math.round(config.backgroundScale * 100)" @input="set('backgroundScale', Number(($event.target as HTMLInputElement).value) / 100)" /><b>{{ Math.round(config.backgroundScale * 100) }}%</b></label>
-    </section>
   </aside>
 </template>

@@ -1,6 +1,6 @@
 # Windows 云笺阁便签系统
 
-这是一个 Windows 桌面便签应用，使用 Node.js + Electron + Vite + Vue 3 构建。当前仓库保留了旧版 Python/Tkinter 原型文件，但主应用已经迁移到 Node.js 桌面工程结构。
+这是一个 Windows 桌面便签应用，使用 Node.js + Electron + Vite + Vue 3 构建。
 
 ## 功能
 
@@ -12,7 +12,7 @@
 - 快捷便签小窗，支持快速新建、打开、自动保存和钉到桌面。
 - 磁贴窗口置顶显示，可复制、关闭、渲染 Markdown。
 - `.md` 导入导出，支持打开并保存外部 `.md/.txt` 文件。
-- 设置面板支持主题、笔记目录、自动保存、快捷键文本、字号、Tab 缩进、磁贴颜色、背景图参数。
+- 设置面板支持主题、笔记目录、自动保存、快捷键文本、字号、Tab 缩进、磁贴颜色。
 - Electron 主进程提供本地文件存储、系统托盘、全局快捷键、多窗口和文件选择能力。
 
 ## 开发运行
@@ -53,11 +53,9 @@ npm start
 
 ## 数据说明
 
-新版本不迁移旧版 `notes.db`。Electron 版本首次启动会在用户应用数据目录创建：
+应用首次启动会在用户应用数据目录创建：
 
 - `config.json`
 - `categories.json`
 - `notes/*.md`
 - `notes/*.json`
-
-旧版 Python 文件 `app.py`、`run.bat` 和 `notes.db` 仅作为历史原型保留。旧 `src-tauri` 目录也仅作为历史迁移参考，不参与 Node.js/Electron 构建。
