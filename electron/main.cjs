@@ -2,6 +2,7 @@ const { app, BrowserWindow, Menu, Tray, globalShortcut, ipcMain, dialog } = requ
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const { execFile } = require("node:child_process");
 
 let mainWindow = null;
 let tray = null;
@@ -263,6 +264,7 @@ function writeCategories(categories) {
 function createWindow(surface = "main", id = "") {
   const isMain = surface === "main";
   const isPad = surface === "pad";
+  const isTile = surface === "tile";
   const browserWindow = new BrowserWindow({
     width: isMain ? 1120 : isPad ? 440 : 360,
     height: isMain ? 720 : isPad ? 360 : 260,
@@ -272,7 +274,7 @@ function createWindow(surface = "main", id = "") {
     transparent: true,
     resizable: true,
     show: true,
-    alwaysOnTop: !isMain,
+    alwaysOnTop: isPad,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -323,6 +325,43 @@ function openTileWindow(id, shouldPin = true) {
   window.on("close", () => {
     if (!app.isQuitting) unpinTile(id);
   });
+}
+
+function nativeWindowHandle(window) {
+  const handle = window.getNativeWindowHandle();
+  return handle.readBigUInt64LE ? handle.readBigUInt64LE(0).toString() : handle.readUInt32LE(0).toString();
+}
+
+function moveWindowToBottom(window) {
+  if (process.platform !== "win32") return;
+  const hwnd = nativeWindowHandle(window);
+  const script = `
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public static class Win32WindowOrder {
+  [DllImport("user32.dll")]
+  public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+}
+"@
+[Win32WindowOrder]::SetWindowPos([IntPtr]${hwnd}, [IntPtr]1, 0, 0, 0, 0, 0x0013) | Out-Null
+`;
+  execFile("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script], () => {});
+}
+
+function setDesktopFixed(id, value) {
+  const window = BrowserWindow.fromId(id);
+  if (!window) return;
+  const fixed = Boolean(value);
+  window.setAlwaysOnTop(false);
+  window.setFocusable(!fixed);
+  if (fixed) {
+    window.blur();
+    moveWindowToBottom(window);
+  } else {
+    window.setFocusable(true);
+    window.focus();
+  }
 }
 
 function restorePinnedTiles() {
@@ -445,6 +484,7 @@ function setupIpc() {
     const window = BrowserWindow.fromId(id);
     if (window) window.setAlwaysOnTop(Boolean(value));
   });
+  handle("window_set_desktop_fixed", ({ id, value }) => setDesktopFixed(id, value));
   handle("window_close", ({ id }) => BrowserWindow.fromId(id)?.close());
   handle("window_hide", ({ id }) => BrowserWindow.fromId(id)?.hide());
   handle("dialog_open", async ({ options }) => {

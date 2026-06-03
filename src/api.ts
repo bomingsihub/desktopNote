@@ -32,6 +32,7 @@ export const appWindow = {
   minimize: () => invoke<void>("window_minimize", { id: currentWindowId() }),
   toggleMaximize: () => invoke<void>("window_toggle_maximize", { id: currentWindowId() }),
   setAlwaysOnTop: (value: boolean) => invoke<void>("window_set_always_on_top", { id: currentWindowId(), value }),
+  setDesktopFixed: (value: boolean) => invoke<void>("window_set_desktop_fixed", { id: currentWindowId(), value }),
   close: () => invoke<void>("window_close", { id: currentWindowId() }),
   hide: () => invoke<void>("window_hide", { id: currentWindowId() }),
 };

@@ -608,8 +608,9 @@ async function saveTileNote() {
 }
 
 async function toggleTileFixed() {
-  tileFixed.value = !tileFixed.value;
-  await appWindow.setAlwaysOnTop(!tileFixed.value);
+  const nextFixed = !tileFixed.value;
+  tileFixed.value = nextFixed;
+  await appWindow.setDesktopFixed(nextFixed);
 }
 </script>
 
