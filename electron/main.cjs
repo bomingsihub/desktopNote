@@ -7,6 +7,7 @@ const { execFile } = require("node:child_process");
 let mainWindow = null;
 let tray = null;
 const devUrl = process.env.VITE_DEV_SERVER_URL;
+const HIDDEN_START_ARG = "--hidden-start";
 const TODO_MARKER = "[[desktop-note:todo]]";
 const TODO_META_RE = /\s*<!--dn-(bucket|created):[^>]+-->/g;
 
@@ -89,7 +90,8 @@ function defaultConfig() {
     globalShortcut: "Ctrl+Space",
     toggleVisibilityShortcut: "Ctrl+Alt+N",
     closeToTray: true,
-    autostart: false,
+    autostart: true,
+    autostartDefaultApplied: true,
     defaultViewMode: "split",
     noteAutoSave: true,
     noteSurfaceAutoSave: true,
@@ -106,6 +108,7 @@ function defaultConfig() {
     renderHtmlMarkdown: false,
     openAtCursor: true,
     pinnedTileIds: [],
+    tileStates: {},
     surfaceWidth: 440,
     surfaceHeight: 360,
   };
@@ -118,17 +121,64 @@ function readJson(file, fallback) {
 
 function readConfig() {
   const file = configPath();
-  if (fs.existsSync(file)) return { ...defaultConfig(), ...JSON.parse(fs.readFileSync(file, "utf8")) };
-  const config = defaultConfig();
+  if (fs.existsSync(file)) {
+    const storedConfig = JSON.parse(fs.readFileSync(file, "utf8"));
+    const shouldApplyAutostartDefault = !Object.prototype.hasOwnProperty.call(storedConfig, "autostartDefaultApplied");
+    const config = {
+      ...defaultConfig(),
+      ...storedConfig,
+      ...(shouldApplyAutostartDefault ? { autostart: true, autostartDefaultApplied: true } : {}),
+    };
+    const syncedConfig = syncAutostartConfig(config);
+    if (shouldApplyAutostartDefault || syncedConfig.autostart !== config.autostart) writeConfig(syncedConfig);
+    return syncedConfig;
+  }
+  const config = syncAutostartConfig(defaultConfig());
   writeConfig(config);
   return config;
 }
 
-function writeConfig(config) {
+function writeConfig(config, notify = true) {
   fs.mkdirSync(config.notesDir, { recursive: true });
   fs.writeFileSync(configPath(), JSON.stringify(config, null, 2));
-  BrowserWindow.getAllWindows().forEach((window) => window.webContents.send("config-changed", config));
+  if (notify) BrowserWindow.getAllWindows().forEach((window) => window.webContents.send("config-changed", config));
   return config;
+}
+
+function loginItemSettings(openAtLogin) {
+  const settings = { openAtLogin: Boolean(openAtLogin) };
+  if (process.platform === "win32") {
+    settings.path = process.execPath;
+    settings.args = process.defaultApp ? [path.resolve(process.argv[1]), HIDDEN_START_ARG] : [HIDDEN_START_ARG];
+  }
+  return settings;
+}
+
+function shouldStartHidden() {
+  return process.argv.includes(HIDDEN_START_ARG);
+}
+
+function isOpenAtLogin() {
+  return app.getLoginItemSettings(loginItemSettings(true)).openAtLogin;
+}
+
+function setOpenAtLogin(value) {
+  app.setLoginItemSettings(loginItemSettings(value));
+  return isOpenAtLogin();
+}
+
+function syncAutostartConfig(config) {
+  try {
+    if (config.autostart) {
+      const autostart = setOpenAtLogin(true);
+      return { ...config, autostart };
+    }
+    const autostart = isOpenAtLogin();
+    if (config.autostart === autostart) return config;
+    return { ...config, autostart };
+  } catch {
+    return config;
+  }
 }
 
 function notesDir() {
@@ -177,6 +227,54 @@ function updatePinnedTileIds(updater) {
   return writeConfig({ ...config, pinnedTileIds: [...new Set(pinnedTileIds)] });
 }
 
+function normalizeBounds(bounds) {
+  if (!bounds || typeof bounds !== "object") return null;
+  const values = ["x", "y", "width", "height"].map((key) => bounds[key]);
+  if (!values.every((value) => Number.isFinite(value))) return null;
+  const [x, y, width, height] = values.map((value) => Math.round(value));
+  if (width < 220 || height < 160) return null;
+  return { x, y, width, height };
+}
+
+function tileStates(config) {
+  return config.tileStates && typeof config.tileStates === "object" ? config.tileStates : {};
+}
+
+function readTileState(id) {
+  if (!id) return {};
+  const state = tileStates(readConfig())[id] || {};
+  return {
+    fixed: Boolean(state.fixed),
+    bounds: normalizeBounds(state.bounds),
+  };
+}
+
+function updateTileState(id, updater, notify = false) {
+  if (!id) return {};
+  const config = readConfig();
+  const states = tileStates(config);
+  const current = states[id] || {};
+  const next = updater(current);
+  writeConfig(
+    {
+      ...config,
+      tileStates: {
+        ...states,
+        [id]: next,
+      },
+    },
+    notify,
+  );
+  return next;
+}
+
+function saveTileBounds(id, window) {
+  if (!id || window.isDestroyed()) return;
+  const bounds = normalizeBounds(window.getBounds());
+  if (!bounds) return;
+  updateTileState(id, (state) => ({ ...state, bounds }));
+}
+
 function pinTile(id) {
   if (!id) return;
   updatePinnedTileIds((ids) => [...ids, id]);
@@ -192,7 +290,15 @@ function prunePinnedTiles() {
   const pinnedTileIds = (Array.isArray(config.pinnedTileIds) ? config.pinnedTileIds : []).filter((id) =>
     fs.existsSync(metadataPath(config.notesDir, id)),
   );
-  if (pinnedTileIds.length !== (config.pinnedTileIds || []).length) writeConfig({ ...config, pinnedTileIds });
+  const states = Object.fromEntries(
+    Object.entries(tileStates(config)).filter(([id]) => fs.existsSync(metadataPath(config.notesDir, id))),
+  );
+  if (
+    pinnedTileIds.length !== (config.pinnedTileIds || []).length ||
+    Object.keys(states).length !== Object.keys(tileStates(config)).length
+  ) {
+    writeConfig({ ...config, pinnedTileIds, tileStates: states });
+  }
   return pinnedTileIds;
 }
 
@@ -261,19 +367,23 @@ function writeCategories(categories) {
   return unique;
 }
 
-function createWindow(surface = "main", id = "") {
+function createWindow(surface = "main", id = "", options = {}) {
   const isMain = surface === "main";
   const isPad = surface === "pad";
   const isTile = surface === "tile";
+  const show = options.show ?? true;
+  const tileState = isTile ? readTileState(id) : {};
+  const tileBounds = isTile ? normalizeBounds(tileState.bounds) : null;
   const browserWindow = new BrowserWindow({
-    width: isMain ? 1120 : isPad ? 440 : 360,
-    height: isMain ? 720 : isPad ? 360 : 260,
+    ...(tileBounds ? tileBounds : {}),
+    width: tileBounds?.width ?? (isMain ? 1120 : isPad ? 440 : 360),
+    height: tileBounds?.height ?? (isMain ? 720 : isPad ? 360 : 260),
     minWidth: isMain ? 880 : isPad ? 320 : 220,
     minHeight: isMain ? 560 : isPad ? 260 : 160,
     frame: false,
     transparent: true,
     resizable: true,
-    show: true,
+    show,
     alwaysOnTop: isPad,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -322,9 +432,13 @@ function openTileWindow(id, shouldPin = true) {
   if (shouldPin) pinTile(id);
   const window = createWindow("tile", id);
   window.__tileId = id;
+  window.on("move", () => saveTileBounds(id, window));
+  window.on("resize", () => saveTileBounds(id, window));
   window.on("close", () => {
+    saveTileBounds(id, window);
     if (!app.isQuitting) unpinTile(id);
   });
+  if (readTileState(id).fixed) setDesktopFixed(window.id, true);
 }
 
 function nativeWindowHandle(window) {
@@ -353,6 +467,9 @@ function setDesktopFixed(id, value) {
   const window = BrowserWindow.fromId(id);
   if (!window) return;
   const fixed = Boolean(value);
+  if (window.__tileId) {
+    updateTileState(window.__tileId, (state) => ({ ...state, fixed, bounds: normalizeBounds(window.getBounds()) }), true);
+  }
   window.setAlwaysOnTop(false);
   window.setFocusable(!fixed);
   if (fixed) {
@@ -417,8 +534,16 @@ function setupIpc() {
   });
   handle("get_config", () => readConfig());
   handle("save_config", ({ config }) => {
-    const saved = writeConfig(config);
-    app.setLoginItemSettings({ openAtLogin: Boolean(config.autostart) });
+    const currentConfig = readConfig();
+    const autostart = setOpenAtLogin(config.autostart);
+    const saved = writeConfig({
+      ...currentConfig,
+      ...config,
+      autostart,
+      autostartDefaultApplied: true,
+      pinnedTileIds: currentConfig.pinnedTileIds ?? config.pinnedTileIds,
+      tileStates: currentConfig.tileStates ?? config.tileStates,
+    });
     registerShortcuts();
     return saved;
   });
@@ -485,6 +610,7 @@ function setupIpc() {
     if (window) window.setAlwaysOnTop(Boolean(value));
   });
   handle("window_set_desktop_fixed", ({ id, value }) => setDesktopFixed(id, value));
+  handle("tile_get_state", ({ id }) => readTileState(id));
   handle("window_close", ({ id }) => BrowserWindow.fromId(id)?.close());
   handle("window_hide", ({ id }) => BrowserWindow.fromId(id)?.hide());
   handle("dialog_open", async ({ options }) => {
@@ -500,7 +626,7 @@ function setupIpc() {
 
 app.whenReady().then(() => {
   setupIpc();
-  createWindow();
+  createWindow("main", "", { show: !shouldStartHidden() });
   restorePinnedTiles();
   setupTray();
   registerShortcuts();

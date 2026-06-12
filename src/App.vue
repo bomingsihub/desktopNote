@@ -196,9 +196,10 @@ async function bootstrapPad() {
 }
 
 async function bootstrapTile() {
-  const [loadedConfig, note] = await Promise.all([api.getConfig(), api.getNote(id)]);
+  const [loadedConfig, note, tileState] = await Promise.all([api.getConfig(), api.getNote(id), api.getTileState(id)]);
   config.value = loadedConfig;
   tileNote.value = note;
+  tileFixed.value = tileState.fixed;
   tileStatus.value = "saved";
 }
 

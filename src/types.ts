@@ -52,6 +52,17 @@ export interface AppConfig {
   renderHtmlMarkdown: boolean;
   openAtCursor: boolean;
   pinnedTileIds?: string[];
+  tileStates?: Record<string, TileState>;
   surfaceWidth?: number | null;
   surfaceHeight?: number | null;
+}
+
+export interface TileState {
+  fixed: boolean;
+  bounds?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  } | null;
 }

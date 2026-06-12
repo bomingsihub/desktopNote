@@ -1,4 +1,4 @@
-import type { AppConfig, Note, NoteMetadata, SaveNoteRequest } from "./types";
+import type { AppConfig, Note, NoteMetadata, SaveNoteRequest, TileState } from "./types";
 
 declare global {
   interface Window {
@@ -62,6 +62,7 @@ export const api = {
     invoke<void>("save_external_file", { path, content }),
   openNotepadWindow: () => invoke<void>("open_notepad_window"),
   openTileWindow: (id: string) => invoke<void>("open_tile_window", { id }),
+  getTileState: (id: string) => invoke<TileState>("tile_get_state", { id }),
   toggleMainWindow: () => invoke<void>("toggle_main_window"),
 };
 
