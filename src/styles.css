@@ -341,6 +341,13 @@ select {
   flex: 1;
   overflow: auto;
   padding: 0 8px 14px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.note-list::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .swipe-row {
@@ -583,6 +590,13 @@ select {
   padding: 18px 24px 24px;
   line-height: 1.9;
   color: var(--ink-soft);
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.workspace textarea::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .workspace.split textarea {
@@ -595,6 +609,13 @@ select {
   min-width: 0;
   overflow: auto;
   padding: 18px 28px 28px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.preview-pane::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .todo-workspace {
@@ -602,6 +623,13 @@ select {
   flex: 1;
   overflow: auto;
   padding: 18px 24px 28px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.todo-workspace::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .todo-list-editor {

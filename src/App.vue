@@ -432,12 +432,16 @@ async function saveSettings(next: AppConfig) {
 function applyFormat(action: string) {
   const textarea = textRef.value;
   if (!textarea) return;
+  const scrollTop = textarea.scrollTop;
+  const scrollLeft = textarea.scrollLeft;
   const result = insertMarkdown(content.value, textarea.selectionStart, textarea.selectionEnd, action);
   content.value = result.value;
   saveState.value = "dirty";
   void nextTick(() => {
     textarea.focus();
     textarea.setSelectionRange(result.start, result.end);
+    textarea.scrollTop = scrollTop;
+    textarea.scrollLeft = scrollLeft;
   });
 }
 
@@ -455,22 +459,128 @@ function toggleTask(index: number) {
   saveState.value = "dirty";
 }
 
+function nextParentOrderedMarker(text: string, lineStart: number, indent: string) {
+  const parentIndent = indent.slice(0, Math.max(0, indent.length - 3));
+  const previousLines = text.slice(0, lineStart).split("\n").reverse();
+  const parentLine = previousLines.find((item) => {
+    const match = /^(\s*)\d+\.\s+/.exec(item);
+    return match?.[1] === parentIndent;
+  });
+  const parentNumber = Number(parentLine?.match(/^\s*(\d+)\./)?.[1] ?? 0);
+  return `${parentIndent}${parentNumber + 1}. `;
+}
+
 function handleEditorKeydown(event: KeyboardEvent) {
-  if (event.key !== "Enter" || event.shiftKey || event.ctrlKey || event.altKey || event.metaKey) return;
   const textarea = textRef.value;
   if (!textarea) return;
+  if (event.ctrlKey || event.altKey || event.metaKey) return;
+
+  if (event.key === "Tab") {
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    if (start !== end) return;
+    const lineStart = content.value.lastIndexOf("\n", start - 1) + 1;
+    const lineEndIndex = content.value.indexOf("\n", start);
+    const lineEnd = lineEndIndex === -1 ? content.value.length : lineEndIndex;
+    const line = content.value.slice(lineStart, lineEnd);
+    const orderedMatch = /^(\s*)(\d+)\.\s*(.*)$/.exec(line);
+    if (!orderedMatch) return;
+    event.preventDefault();
+    const currentIndent = orderedMatch[1];
+    const nextIndent = event.shiftKey
+      ? currentIndent.slice(0, Math.max(0, currentIndent.length - 3))
+      : `${currentIndent}   `;
+    const nextLine = `${nextIndent}1. ${orderedMatch[3]}`;
+    const offset = nextLine.length - line.length;
+    content.value = content.value.slice(0, lineStart) + nextLine + content.value.slice(lineEnd);
+    saveState.value = "dirty";
+    void nextTick(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + offset, start + offset);
+    });
+    return;
+  }
+
+  if (event.shiftKey) return;
+
+  if (event.key === " ") {
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    if (start !== end) return;
+    const lineStart = content.value.lastIndexOf("\n", start - 1) + 1;
+    const line = content.value.slice(lineStart, start);
+    const match = /^(\s*)(\d+)$/.exec(line);
+    if (!match) return;
+    event.preventDefault();
+    const next = `${match[1]}${match[2]}. `;
+    content.value = content.value.slice(0, lineStart) + next + content.value.slice(end);
+    saveState.value = "dirty";
+    void nextTick(() => {
+      textarea.focus();
+      textarea.setSelectionRange(lineStart + next.length, lineStart + next.length);
+    });
+    return;
+  }
+
+  if (event.key !== "Enter") return;
   const lineStart = content.value.lastIndexOf("\n", textarea.selectionStart - 1) + 1;
   const line = content.value.slice(lineStart, textarea.selectionStart);
+  const emptyOrderedMatch = /^(\s*)\d+\.\s*$/.exec(line);
+  if (emptyOrderedMatch) {
+    event.preventDefault();
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const scrollTop = textarea.scrollTop;
+    const scrollLeft = textarea.scrollLeft;
+    const parentMarker = emptyOrderedMatch[1]
+      ? nextParentOrderedMarker(content.value, lineStart, emptyOrderedMatch[1])
+      : "";
+    const replacement = parentMarker ? parentMarker : "\n";
+    content.value = content.value.slice(0, lineStart) + replacement + content.value.slice(end);
+    saveState.value = "dirty";
+    void nextTick(() => {
+      textarea.focus();
+      textarea.setSelectionRange(lineStart + replacement.length, lineStart + replacement.length);
+      textarea.scrollTop = scrollTop;
+      textarea.scrollLeft = scrollLeft;
+    });
+    return;
+  }
+
+  const orderedMatch = /^(\s*)(\d+)\.\s+/.exec(line);
+  if (orderedMatch) {
+    event.preventDefault();
+    const nextNumber = Number(orderedMatch[2]) + 1;
+    const insert = `\n${orderedMatch[1]}${nextNumber}. `;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const scrollTop = textarea.scrollTop;
+    const scrollLeft = textarea.scrollLeft;
+    content.value = content.value.slice(0, start) + insert + content.value.slice(end);
+    saveState.value = "dirty";
+    void nextTick(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + insert.length, start + insert.length);
+      textarea.scrollTop = scrollTop;
+      textarea.scrollLeft = scrollLeft;
+    });
+    return;
+  }
+
   if (!/^\s*[-*]\s+\[[ xX]\]\s+/.test(line)) return;
   event.preventDefault();
   const insert = "\n- [ ] ";
   const start = textarea.selectionStart;
   const end = textarea.selectionEnd;
+  const scrollTop = textarea.scrollTop;
+  const scrollLeft = textarea.scrollLeft;
   content.value = content.value.slice(0, start) + insert + content.value.slice(end);
   saveState.value = "dirty";
   void nextTick(() => {
     textarea.focus();
     textarea.setSelectionRange(start + insert.length, start + insert.length);
+    textarea.scrollTop = scrollTop;
+    textarea.scrollLeft = scrollLeft;
   });
 }
 

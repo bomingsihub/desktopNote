@@ -35,6 +35,20 @@ function enableTaskLists(md: MarkdownIt) {
   });
 }
 
+function breakPlainTextAfterLists(text: string) {
+  return text
+    .split(/\r?\n/)
+    .reduce<string[]>((lines, line) => {
+      const previous = lines.at(-1) ?? "";
+      const isListLine = /^\s*(?:[-*+]\s+|\d+\.\s+)/.test(previous);
+      const isPlainLine = line.trim() && !/^\s*(?:[-*+]\s+|\d+\.\s+)/.test(line);
+      if (isListLine && isPlainLine) lines.push("");
+      lines.push(line);
+      return lines;
+    }, [])
+    .join("\n");
+}
+
 function renderMarkdown() {
   const md = new MarkdownIt({
     html: props.renderHtml,
@@ -48,7 +62,7 @@ function renderMarkdown() {
     return self.renderToken(tokens, idx, options);
   };
   enableTaskLists(md);
-  return md.render(props.content || " ");
+  return md.render(breakPlainTextAfterLists(props.content || " "));
 }
 
 function onPreviewChange(event: Event) {
