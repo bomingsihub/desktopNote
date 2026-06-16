@@ -51,11 +51,10 @@ async function chooseDir() {
       <label class="toggle-row"><span>关闭到托盘</span><input type="checkbox" :checked="config.closeToTray" @change="set('closeToTray', ($event.target as HTMLInputElement).checked)" /></label>
       <label class="toggle-row"><span>开机自启</span><input type="checkbox" :checked="config.autostart" @change="set('autostart', ($event.target as HTMLInputElement).checked)" /></label>
       <label class="toggle-row"><span>自动保存笔记</span><input type="checkbox" :checked="config.noteAutoSave" @change="set('noteAutoSave', ($event.target as HTMLInputElement).checked)" /></label>
-      <label class="toggle-row"><span>小窗笔记自动保存</span><input type="checkbox" :checked="config.noteSurfaceAutoSave" @change="set('noteSurfaceAutoSave', ($event.target as HTMLInputElement).checked)" /></label>
+      <label class="toggle-row"><span>磁贴自动保存</span><input type="checkbox" :checked="config.noteSurfaceAutoSave" @change="set('noteSurfaceAutoSave', ($event.target as HTMLInputElement).checked)" /></label>
       <label class="toggle-row"><span>外部文件自动保存</span><input type="checkbox" :checked="config.externalFileAutoSave" @change="set('externalFileAutoSave', ($event.target as HTMLInputElement).checked)" /></label>
       <label class="toggle-row"><span>磁贴渲染 Markdown</span><input type="checkbox" :checked="config.tileRenderMarkdown" @change="set('tileRenderMarkdown', ($event.target as HTMLInputElement).checked)" /></label>
       <label class="toggle-row"><span>允许 HTML 标签渲染</span><input type="checkbox" :checked="config.renderHtmlMarkdown" @change="set('renderHtmlMarkdown', ($event.target as HTMLInputElement).checked)" /></label>
-      <label class="toggle-row"><span>快捷键打开时跟随鼠标位置</span><input type="checkbox" :checked="config.openAtCursor" @change="set('openAtCursor', ($event.target as HTMLInputElement).checked)" /></label>
     </section>
     <section>
       <label>默认视图</label>
@@ -71,13 +70,12 @@ async function chooseDir() {
       </div>
     </section>
     <section>
-      <label>快捷键</label>
-      <input :value="config.globalShortcut" placeholder="Ctrl+Space" @input="set('globalShortcut', ($event.target as HTMLInputElement).value)" />
+      <label>显示/隐藏快捷键</label>
       <input :value="config.toggleVisibilityShortcut" placeholder="Ctrl+Alt+N" @input="set('toggleVisibilityShortcut', ($event.target as HTMLInputElement).value)" />
     </section>
     <section>
       <label class="range-row"><span>编辑器字号</span><input type="range" min="8" max="30" :value="config.fontSize" @input="set('fontSize', Number(($event.target as HTMLInputElement).value))" /><b>{{ config.fontSize }}px</b></label>
-      <label class="range-row"><span>小窗/磁贴字号</span><input type="range" min="8" max="30" :value="config.surfaceFontSize" @input="set('surfaceFontSize', Number(($event.target as HTMLInputElement).value))" /><b>{{ config.surfaceFontSize }}px</b></label>
+      <label class="range-row"><span>磁贴字号</span><input type="range" min="8" max="30" :value="config.surfaceFontSize" @input="set('surfaceFontSize', Number(($event.target as HTMLInputElement).value))" /><b>{{ config.surfaceFontSize }}px</b></label>
       <label class="range-row"><span>Tab 缩进</span><input type="range" min="1" max="8" :value="config.tabIndentSize" @input="set('tabIndentSize', Number(($event.target as HTMLInputElement).value))" /><b>{{ config.tabIndentSize }}</b></label>
     </section>
     <section>

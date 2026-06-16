@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import MarkdownIt from "markdown-it";
 import markdownItKatex from "@iktakahiro/markdown-it-katex";
+import { api, isDesktop } from "./api";
 
 const props = defineProps<{
   content: string;
@@ -37,9 +38,15 @@ function enableTaskLists(md: MarkdownIt) {
 function renderMarkdown() {
   const md = new MarkdownIt({
     html: props.renderHtml,
+    breaks: true,
     linkify: true,
     typographer: false,
   }).use(markdownItKatex);
+  md.renderer.rules.link_open = (tokens, idx, options, _env, self) => {
+    tokens[idx].attrSet("target", "_blank");
+    tokens[idx].attrSet("rel", "noopener noreferrer");
+    return self.renderToken(tokens, idx, options);
+  };
   enableTaskLists(md);
   return md.render(props.content || " ");
 }
@@ -51,8 +58,22 @@ function onPreviewChange(event: Event) {
   if (Number.isNaN(index)) return;
   emit("toggleTask", index);
 }
+
+function onPreviewClick(event: MouseEvent) {
+  const target = event.target instanceof Element ? event.target.closest("a") : null;
+  if (!(target instanceof HTMLAnchorElement) || !target.href) return;
+  event.preventDefault();
+  if (isDesktop) void api.openExternalUrl(target.href);
+  else window.open(target.href, "_blank", "noopener,noreferrer");
+}
 </script>
 
 <template>
-  <div class="markdown-preview" :style="{ fontSize: `${fontSize}px` }" @change="onPreviewChange" v-html="renderMarkdown()" />
+  <div
+    class="markdown-preview"
+    :style="{ fontSize: `${fontSize}px` }"
+    @change="onPreviewChange"
+    @click="onPreviewClick"
+    v-html="renderMarkdown()"
+  />
 </template>

@@ -100,7 +100,6 @@ select {
 .editor-toolbar,
 .statusbar,
 .editor-meta,
-.pad-shell header,
 .tile-header {
   user-select: none;
   -webkit-app-region: drag;
@@ -117,6 +116,18 @@ select {
   border-bottom: 1px solid color-mix(in srgb, var(--paper-deep) 60%, transparent);
 }
 
+.window-bar {
+  padding-left: 8px;
+}
+
+.app-brand-logo {
+  width: 72px;
+  height: 28px;
+  object-fit: contain;
+  object-position: left center;
+  -webkit-app-region: no-drag;
+}
+
 .window-bar button,
 .titlebar button,
 .editor-toolbar button,
@@ -124,7 +135,6 @@ select {
 .create-menu button,
 .segmented button,
 .tile-actions button,
-.pad-shell button,
 .settings-panel button {
   min-width: 28px;
   height: 28px;
@@ -140,7 +150,6 @@ select {
 .create-menu button:hover,
 .segmented button:hover,
 .tile-actions button:hover,
-.pad-shell button:hover,
 .settings-panel button:hover {
   background: var(--bamboo-soft);
   color: var(--bamboo);
@@ -151,6 +160,45 @@ select {
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
   padding: 12px;
+}
+
+.note-create-wrap {
+  position: relative;
+}
+
+.note-create-wrap > button {
+  width: 100%;
+}
+
+.note-create-menu {
+  position: absolute;
+  z-index: 4;
+  top: 36px;
+  left: 0;
+  width: 136px;
+  display: grid;
+  gap: 6px;
+  padding: 7px;
+  border: 1px solid color-mix(in srgb, var(--paper-deep) 70%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--cloud) 98%, transparent);
+  box-shadow: 0 12px 28px rgba(35, 32, 24, 0.12);
+}
+
+.note-create-menu button {
+  width: 100%;
+  height: 30px;
+  padding: 0 9px;
+  border-radius: 6px;
+  text-align: left;
+  color: var(--ink-soft);
+  background: transparent;
+  font-size: 12px;
+}
+
+.note-create-menu button:hover {
+  color: var(--bamboo);
+  background: var(--bamboo-soft);
 }
 
 .sidebar-actions button,
@@ -302,10 +350,6 @@ select {
   background: transparent;
 }
 
-.category-block > .swipe-row {
-  margin-top: 6px;
-}
-
 .note-swipe-row {
   margin: 3px 0;
 }
@@ -349,18 +393,6 @@ select {
   transform: translateX(0);
 }
 
-.category-title {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 7px 8px;
-  margin-top: 0;
-  border-radius: 8px;
-  color: var(--ink-ghost);
-  font-size: 12px;
-}
-
 .note-item {
   width: 100%;
   display: block;
@@ -378,10 +410,6 @@ select {
 .note-item:hover,
 .note-item.selected {
   background: color-mix(in srgb, var(--cloud) 84%, transparent);
-}
-
-.category-title:hover {
-  background: color-mix(in srgb, var(--cloud) 72%, transparent);
 }
 
 .note-item.selected {
@@ -431,6 +459,7 @@ select {
 
 .titlebar-actions {
   display: flex;
+  align-items: center;
   gap: 4px;
 }
 
@@ -655,6 +684,12 @@ select {
   color: var(--ink-soft);
 }
 
+.markdown-preview a {
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
 .markdown-preview h1,
 .markdown-preview h2,
 .markdown-preview h3 {
@@ -807,97 +842,6 @@ select {
   text-align: right;
   color: var(--ink-soft);
   font-size: 11px;
-}
-
-.pad-shell {
-  width: 100vw;
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--paper-deep);
-  background: color-mix(in srgb, var(--cloud) 94%, transparent);
-  backdrop-filter: blur(20px);
-}
-
-.pad-shell header {
-  height: 42px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 10px;
-  border-bottom: 1px solid var(--paper-deep);
-}
-
-.pad-shell header div {
-  display: flex;
-  gap: 5px;
-}
-
-.pad-shell button.active {
-  color: var(--bamboo);
-  background: var(--bamboo-soft);
-}
-
-.pad-editor {
-  min-height: 0;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  padding: 14px;
-}
-
-.pad-editor input {
-  height: 34px;
-  font-weight: 700;
-}
-
-.pad-editor textarea {
-  flex: 1;
-  resize: none;
-  line-height: 1.8;
-}
-
-.pad-editor footer {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding-top: 8px;
-  border-top: 1px solid var(--paper-deep);
-}
-
-.pad-editor footer span {
-  margin-right: auto;
-  color: var(--ink-ghost);
-  font-size: 11px;
-}
-
-.pad-list {
-  flex: 1;
-  overflow: auto;
-  padding: 10px;
-}
-
-.pad-list button {
-  width: 100%;
-  height: auto;
-  display: block;
-  padding: 10px;
-  text-align: left;
-  border-radius: 10px;
-}
-
-.pad-list strong,
-.pad-list span {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pad-list span {
-  margin-top: 4px;
-  color: var(--ink-ghost);
-  font-size: 12px;
 }
 
 .tile {

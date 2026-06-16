@@ -1,6 +1,5 @@
 export type ViewMode = "edit" | "split" | "preview";
 export type ThemeOption = "light" | "dark" | "system";
-export type SurfaceMode = "main" | "pad" | "tile";
 
 export interface NoteMetadata {
   id: string;
@@ -32,7 +31,6 @@ export interface ExternalFile {
 export interface AppConfig {
   locale: string;
   notesDir: string;
-  globalShortcut: string;
   toggleVisibilityShortcut: string;
   closeToTray: boolean;
   autostart: boolean;
@@ -50,11 +48,8 @@ export interface AppConfig {
   tileCtrlClose: boolean;
   tileRenderMarkdown: boolean;
   renderHtmlMarkdown: boolean;
-  openAtCursor: boolean;
   pinnedTileIds?: string[];
   tileStates?: Record<string, TileState>;
-  surfaceWidth?: number | null;
-  surfaceHeight?: number | null;
 }
 
 export interface TileState {

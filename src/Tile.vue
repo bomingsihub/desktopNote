@@ -151,7 +151,7 @@ function handleTileTodoKeydown(event: KeyboardEvent, index: number) {
 }
 
 function addTileTodoBucket() {
-  const name = window.prompt("新增分类", "");
+  const name = window.prompt("新增分组", "");
   const bucket = name?.trim();
   if (!bucket) return;
   selectTileTodoBucket(bucket);
@@ -204,10 +204,10 @@ function selectTileTodoBucket(bucket: string) {
           >
             <span>{{ bucket }}</span>
           </button>
-          <button v-if="editing" class="tile-todo-bucket-add" title="新增分类" @click="addTileTodoBucket">+</button>
+          <button v-if="editing" class="tile-todo-bucket-add" title="新增分组" @click="addTileTodoBucket">+</button>
         </aside>
         <div class="tile-todo-list">
-          <label
+          <div
             v-for="{ item, index } in activeTileTodoItems"
             :key="index"
             v-show="editing || item.text.trim()"
@@ -223,7 +223,7 @@ function selectTileTodoBucket(bucket: string) {
               @keydown="handleTileTodoKeydown($event, index)"
             />
             <button v-if="editing" title="Delete todo" @click.prevent="removeTileTodo(index)">x</button>
-          </label>
+          </div>
         </div>
       </div>
       <textarea

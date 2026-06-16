@@ -66,20 +66,8 @@ export function filterNotes(notes: NoteMetadata[], query: string): NoteMetadata[
   return notes.filter(
     (note) =>
       note.title.toLowerCase().includes(q) ||
-      note.preview.toLowerCase().includes(q) ||
-      note.category.toLowerCase().includes(q),
+      note.preview.toLowerCase().includes(q),
   );
-}
-
-export function groupNotes(notes: NoteMetadata[], categories: string[]) {
-  const groups = new Map<string, NoteMetadata[]>();
-  for (const category of categories) groups.set(category, []);
-  groups.set("", []);
-  for (const note of notes) {
-    const key = note.category || "";
-    groups.set(key, [...(groups.get(key) ?? []), note]);
-  }
-  return Array.from(groups.entries()).filter(([, items]) => items.length > 0 || groups.size === 1);
 }
 
 export function applyTheme(theme: string) {

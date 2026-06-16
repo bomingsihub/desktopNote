@@ -9,10 +9,13 @@ files:
       - electron/**/*
       - package.json
 win:
+  icon: electron/icons/icon.ico
   signAndEditExecutable: false
   target:
     - nsis
 nsis:
+  installerIcon: electron/icons/icon.ico
+  uninstallerIcon: electron/icons/icon.ico
   oneClick: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true

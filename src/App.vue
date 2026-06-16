@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import logoUrl from "./assets/logo.png";
 import {
   appWindow,
   api,
@@ -19,7 +20,6 @@ import {
   filterNotes,
   formatShortDate,
   formatTime,
-  groupNotes,
   insertMarkdown,
   metadataFromNote,
   normalizeViewMode,
@@ -88,15 +88,12 @@ function currentSurface() {
 
 function closeCreateMenu() {
   createMenuOpen.value = false;
-  categoryCreateOpen.value = false;
-  newCategory.value = "";
 }
 
 const { surface, id } = currentSurface();
 
 const config = ref<AppConfig | null>(null);
 const notes = ref<NoteMetadata[]>([]);
-const categories = ref<string[]>([]);
 const externalFiles = ref<ExternalFile[]>([]);
 const selectedId = ref<string | null>(null);
 const title = ref("");
@@ -107,32 +104,23 @@ const saveState = ref<"idle" | "dirty" | "saving" | "saved" | "error">("idle");
 const settingsOpen = ref(false);
 const createMenuOpen = ref(false);
 const todoBucketMenuOpen = ref(false);
-const categoryCreateOpen = ref(false);
-const collapsed = ref<Set<string>>(new Set());
-const activeCategory = ref("");
-const newCategory = ref("");
 const error = ref("");
 const textRef = ref<HTMLTextAreaElement | null>(null);
 const swipedItem = ref("");
 const swipeStart = ref<{ key: string; x: number; y: number } | null>(null);
 const suppressSwipeClickUntil = ref(0);
-const openList = ref(false);
-const status = ref("空");
-const editingId = ref<string | null>(null);
 const tileNote = ref<Note | null>(null);
-const tileEditing = ref(true);
+const tileEditing = ref(false);
 const tileFixed = ref(false);
 const tileStatus = ref<"saved" | "dirty" | "saving" | "error">("saved");
 
 const isMain = computed(() => surface === "main");
-const isPad = computed(() => surface === "pad");
 const isTile = computed(() => surface === "tile");
 const selectedNote = computed(() => notes.value.find((note) => note.id === selectedId.value) ?? null);
 const selectedExternal = computed(
   () => externalFiles.value.find((file) => file.id === selectedId.value) ?? null,
 );
 const filtered = computed(() => filterNotes(notes.value, query.value));
-const grouped = computed(() => groupNotes(filtered.value, categories.value));
 const isExternal = computed(() => Boolean(selectedExternal.value));
 const isTodoNote = computed(() => content.value.startsWith(TODO_MARKER));
 const todoItems = computed(() => {
@@ -150,9 +138,8 @@ const todoBuckets = computed(() => {
 });
 
 async function refresh() {
-  const [nextNotes, nextCategories] = await Promise.all([api.listNotes(), api.listCategories()]);
+  const nextNotes = await api.listNotes();
   notes.value = nextNotes;
-  categories.value = nextCategories;
   return nextNotes;
 }
 
@@ -168,17 +155,14 @@ async function loadNote(noteId: string) {
 
 async function bootstrapMain() {
   try {
-    const [loadedConfig, loadedNotes, loadedCategories] = await Promise.all([
+    const [loadedConfig, loadedNotes] = await Promise.all([
       api.getConfig(),
       api.listNotes(),
-      api.listCategories(),
     ]);
     config.value = loadedConfig;
     applyTheme(loadedConfig.theme);
     viewMode.value = normalizeViewMode(loadedConfig.defaultViewMode);
     notes.value = loadedNotes;
-    categories.value = loadedCategories;
-    collapsed.value = new Set(loadedCategories);
     if (loadedNotes[0]) {
       await loadNote(loadedNotes[0].id);
     } else {
@@ -187,12 +171,6 @@ async function bootstrapMain() {
   } catch (err) {
     error.value = getErrorMessage(err);
   }
-}
-
-async function bootstrapPad() {
-  const [loadedConfig, loadedNotes] = await Promise.all([api.getConfig(), api.listNotes()]);
-  config.value = loadedConfig;
-  notes.value = loadedNotes;
 }
 
 async function bootstrapTile() {
@@ -205,7 +183,6 @@ async function bootstrapTile() {
 
 onMounted(() => {
   if (isMain.value) void bootstrapMain();
-  if (isPad.value) void bootstrapPad();
   if (isTile.value) void bootstrapTile();
 });
 
@@ -214,7 +191,7 @@ if (isMain.value) {
   const closeCreateMenuOnOutsideClick = (event: PointerEvent) => {
     if (!createMenuOpen.value) return;
     const target = event.target instanceof Element ? event.target : null;
-    if (target?.closest(".create-menu, .create-menu-trigger")) return;
+    if (target?.closest(".note-create-menu, .note-create-trigger")) return;
     closeCreateMenu();
   };
   onMounted(async () => {
@@ -254,19 +231,15 @@ watch([content, title, saveState, selectedExternal], () => {
   window.setTimeout(() => void saveCurrent(), 800);
 });
 
-watch([content, title, status], () => {
-  if (!config.value?.noteSurfaceAutoSave || status.value !== "未保存" || !isPad.value) return;
-  window.setTimeout(() => void savePad(), 900);
-});
-
 watch([() => tileNote.value?.title, () => tileNote.value?.content, tileStatus], () => {
   if (!config.value?.noteSurfaceAutoSave || tileStatus.value !== "dirty" || !isTile.value) return;
   window.setTimeout(() => void saveTileNote(), 900);
 });
 
 async function createBlank() {
-  const note = await api.createNote({ title: "无标题笔记", content: "", category: activeCategory.value });
+  const note = await api.createNote({ title: "无标题笔记", content: "", category: "" });
   notes.value = [metadataFromNote(note), ...notes.value];
+  createMenuOpen.value = false;
   await loadNote(note.id);
   void nextTick(() => {
     textRef.value?.focus();
@@ -277,7 +250,7 @@ async function createTodoNote() {
   const note = await api.createNote({
     title: "待办事项",
     content: `${TODO_MARKER}\n${writeTodoLine(newTodoItem())}`,
-    category: activeCategory.value,
+    category: "",
   });
   notes.value = [metadataFromNote(note), ...notes.value];
   createMenuOpen.value = false;
@@ -356,7 +329,7 @@ async function saveCurrent() {
       saveState.value = "saved";
       return;
     }
-    const category = selectedNote.value?.category ?? activeCategory.value;
+    const category = selectedNote.value?.category ?? "";
     const note = await api.updateNote(selectedId.value, { title: title.value, content: content.value, category });
     notes.value = [metadataFromNote(note), ...notes.value.filter((item) => item.id !== note.id)].sort((a, b) =>
       b.updatedAt.localeCompare(a.updatedAt),
@@ -386,29 +359,11 @@ async function deleteNoteById(noteId: string) {
   }
 }
 
-async function deleteCategoryByName(category: string) {
-  if (!category) return;
-  categories.value = await api.deleteCategory(category);
-  swipedItem.value = "";
-  if (activeCategory.value === category) activeCategory.value = "";
-  const next = await refresh();
-  if (selectedId.value && !next.some((note) => note.id === selectedId.value)) {
-    if (next[0]) await loadNote(next[0].id);
-    else {
-      selectedId.value = null;
-      title.value = "";
-      content.value = "";
-      saveState.value = "idle";
-    }
-  }
-}
-
-function swipeKey(type: "category" | "note", id: string) {
+function swipeKey(type: "note", id: string) {
   return `${type}:${id || "none"}`;
 }
 
 function startSwipe(event: PointerEvent, key: string) {
-  if (key === swipeKey("category", "")) return;
   swipeStart.value = { key, x: event.clientX, y: event.clientY };
 }
 
@@ -441,23 +396,10 @@ async function openSwipedNote(noteId: string) {
   await loadNote(noteId);
 }
 
-function toggleSwipedCategory(category: string) {
-  if (shouldSuppressSwipeClick()) return;
-  const key = swipeKey("category", category);
-  if (swipedItem.value === key) {
-    swipedItem.value = "";
-    return;
-  }
-  swipedItem.value = "";
-  collapsed.value = collapsed.value.has(category)
-    ? new Set([...collapsed.value].filter((item) => item !== category))
-    : new Set([...collapsed.value, category]);
-}
-
 async function importMarkdown() {
   const path = await chooseMarkdownImport();
   if (!path) return;
-  const note = await api.importMarkdown(path, activeCategory.value);
+  const note = await api.importMarkdown(path);
   await refresh();
   await loadNote(note.id);
 }
@@ -532,46 +474,6 @@ function handleEditorKeydown(event: KeyboardEvent) {
   });
 }
 
-async function addCategory() {
-  const value = newCategory.value.trim();
-  if (!value) return;
-  categories.value = await api.createCategory(value);
-  newCategory.value = "";
-  createMenuOpen.value = false;
-  categoryCreateOpen.value = false;
-}
-
-async function moveSelected(category: string) {
-  if (!selectedId.value || selectedExternal.value) return;
-  const note = await api.moveNoteCategory(selectedId.value, category);
-  activeCategory.value = category;
-  notes.value = notes.value.map((item) => (item.id === note.id ? metadataFromNote(note) : item));
-}
-
-async function savePad() {
-  const request = { title: title.value, content: content.value, category: "" };
-  const note = editingId.value ? await api.updateNote(editingId.value, request) : await api.createNote(request);
-  editingId.value = note.id;
-  notes.value = [metadataFromNote(note), ...notes.value.filter((item) => item.id !== note.id)];
-  status.value = "已保存";
-}
-
-async function openPadNote(noteId: string) {
-  const note = await api.getNote(noteId);
-  editingId.value = note.id;
-  title.value = note.title;
-  content.value = note.content;
-  openList.value = false;
-  status.value = "已打开";
-}
-
-function clearPad() {
-  editingId.value = null;
-  title.value = "";
-  content.value = "";
-  status.value = "空";
-}
-
 function contentKb(value: string) {
   return (new TextEncoder().encode(value).length / 1024).toFixed(1);
 }
@@ -617,97 +519,52 @@ async function toggleTileFixed() {
 
 <template>
   <div v-if="isMain && !config" class="boot">正在启动云笺阁...</div>
-  <div v-else-if="isPad && !config" class="boot">正在打开快捷便签...</div>
   <div v-else-if="isTile && (!tileNote || !config)" class="boot">正在打开磁贴...</div>
 
   <div v-else-if="isMain && config" class="app-shell">
     <aside class="sidebar">
       <div class="window-bar" data-drag-region>
-        <strong>云笺阁</strong>
+        <img class="app-brand-logo" :src="logoUrl" alt="云笺阁" />
         <div>
-          <button
-            class="create-menu-trigger"
-            title="新建"
-            @click="
-              createMenuOpen = !createMenuOpen;
-              categoryCreateOpen = false;
-            "
-          >
-            ＋
-          </button>
           <button title="设置" @click="settingsOpen = true">⚙</button>
         </div>
       </div>
-      <div v-if="createMenuOpen" class="create-menu">
-        <template v-if="!categoryCreateOpen">
-          <button @click="api.openNotepadWindow(); createMenuOpen = false">快捷便签</button>
-          <button @click="createTodoNote">待办便签</button>
-          <button @click="categoryCreateOpen = true">新增分类</button>
-        </template>
-        <template v-else>
-          <input
-            v-model="newCategory"
-            placeholder="分类名称"
-            autofocus
-            @keydown.enter="addCategory"
-            @keydown.esc="closeCreateMenu"
-          />
-          <div class="create-menu-actions">
-            <button @click="closeCreateMenu">取消</button>
-            <button @click="addCategory">添加</button>
-          </div>
-        </template>
-      </div>
       <div class="sidebar-actions">
-        <button @click="createBlank">新建</button>
+        <div class="note-create-wrap">
+          <button
+            class="note-create-trigger"
+            @click="createMenuOpen = !createMenuOpen"
+          >
+            新建
+          </button>
+          <div v-if="createMenuOpen" class="note-create-menu">
+            <button @click="createBlank">Markdown便签</button>
+            <button @click="createTodoNote">待办便签</button>
+          </div>
+        </div>
         <button @click="importMarkdown">导入</button>
         <button @click="openExternal">外部</button>
       </div>
-      <input v-model="query" class="search" placeholder="搜索笔记、内容或分类" />
+      <input v-model="query" class="search" placeholder="搜索笔记或内容" />
       <div class="note-list">
-        <section v-for="[category, items] in grouped" :key="category || 'none'" class="category-block">
-          <div :class="['swipe-row', swipedItem === swipeKey('category', category) ? 'revealed' : '']">
-            <button
-              v-if="category"
-              class="swipe-delete"
-              @click="deleteCategoryByName(category)"
-            >
-              删除
-            </button>
-            <button
-              class="category-title swipe-content"
-              @pointerdown="startSwipe($event, swipeKey('category', category))"
-              @pointermove="moveSwipe"
-              @pointerup="endSwipe"
-              @pointercancel="endSwipe"
-              @click="toggleSwipedCategory(category)"
-            >
-              <span>{{ category || "未分类" }}</span>
-              <b>{{ items.length }}</b>
-            </button>
-          </div>
-          <template v-if="!collapsed.has(category)">
-            <div
-              v-for="note in items"
-              :key="note.id"
-              :class="['swipe-row', 'note-swipe-row', swipedItem === swipeKey('note', note.id) ? 'revealed' : '']"
-            >
-              <button class="swipe-delete" @click="deleteNoteById(note.id)">删除</button>
-              <button
-                :class="['note-item', 'swipe-content', selectedId === note.id ? 'selected' : '']"
-                @pointerdown="startSwipe($event, swipeKey('note', note.id))"
-                @pointermove="moveSwipe"
-                @pointerup="endSwipe"
-                @pointercancel="endSwipe"
-                @click="openSwipedNote(note.id)"
-                @contextmenu.prevent="moveSelected(category)"
-              >
-                <strong>{{ noteTitle(note) }}</strong>
-                <small>{{ formatShortDate(note.updatedAt) }} · {{ note.wordCount }} 字</small>
-              </button>
-            </div>
-          </template>
-        </section>
+        <div
+          v-for="note in filtered"
+          :key="note.id"
+          :class="['swipe-row', 'note-swipe-row', swipedItem === swipeKey('note', note.id) ? 'revealed' : '']"
+        >
+          <button class="swipe-delete" @click="deleteNoteById(note.id)">删除</button>
+          <button
+            :class="['note-item', 'swipe-content', selectedId === note.id ? 'selected' : '']"
+            @pointerdown="startSwipe($event, swipeKey('note', note.id))"
+            @pointermove="moveSwipe"
+            @pointerup="endSwipe"
+            @pointercancel="endSwipe"
+            @click="openSwipedNote(note.id)"
+          >
+            <strong>{{ noteTitle(note) }}</strong>
+            <small>{{ formatShortDate(note.updatedAt) }} · {{ note.wordCount }} 字</small>
+          </button>
+        </div>
         <button
           v-for="file in externalFiles"
           :key="file.id"
@@ -753,10 +610,6 @@ async function toggleTileFixed() {
         <button :disabled="!selectedId || isExternal" @click="selectedId && api.openTileWindow(selectedId)">
           钉到屏幕
         </button>
-        <select v-model="activeCategory" @change="moveSelected(($event.target as HTMLSelectElement).value)">
-          <option value="">未分类</option>
-          <option v-for="category in categories" :key="category" :value="category">{{ category }}</option>
-        </select>
         <div v-if="!isTodoNote" class="format-buttons">
           <button v-for="[action, label, tip] in toolbar" :key="action" :title="tip" @click="applyFormat(action)">
             {{ label }}
@@ -841,44 +694,6 @@ async function toggleTileFixed() {
     </main>
     <div v-if="settingsOpen" class="settings-overlay" @click="settingsOpen = false">
       <SettingsPanel :config="config" @change="saveSettings" @close="settingsOpen = false" @click.stop />
-    </div>
-  </div>
-
-  <div v-else-if="isPad && config" class="pad-shell">
-    <header data-drag-region>
-      <div>
-        <button :class="{ active: !openList }" @click="openList = false">{{ editingId ? "编辑" : "新建" }}</button>
-        <button :class="{ active: openList }" @click="openList = true">打开</button>
-      </div>
-      <div>
-        <button :disabled="!editingId" @click="editingId && api.openTileWindow(editingId)">📌</button>
-        <button @click="appWindow.close()">×</button>
-      </div>
-    </header>
-    <div v-if="openList" class="pad-list">
-      <button v-for="note in notes" :key="note.id" @click="openPadNote(note.id)">
-        <strong>{{ noteTitle(note) }}</strong>
-        <span>{{ note.preview || "空白笔记" }}</span>
-      </button>
-    </div>
-    <div v-else class="pad-editor">
-      <input
-        v-model="title"
-        placeholder="标题（可选）"
-        :style="{ fontSize: `${config.surfaceFontSize}px` }"
-        @input="status = '未保存'"
-      />
-      <textarea
-        v-model="content"
-        placeholder="写点什么……"
-        :style="{ fontSize: `${config.surfaceFontSize}px`, tabSize: config.tabIndentSize }"
-        @input="status = '未保存'"
-      />
-      <footer>
-        <span>{{ countChars(content) }} 字 · {{ status }}</span>
-        <button @click="clearPad">清空</button>
-        <button @click="savePad">保存</button>
-      </footer>
     </div>
   </div>
 

@@ -46,21 +46,14 @@ export const api = {
   updateNote: (id: string, request: SaveNoteRequest) =>
     invoke<Note>("update_note", { id, request }),
   deleteNote: (id: string) => invoke<void>("delete_note", { id }),
-  listCategories: () => invoke<string[]>("list_categories"),
-  createCategory: (category: string) => invoke<string[]>("create_category", { category }),
-  renameCategory: (oldName: string, newName: string) =>
-    invoke<string[]>("rename_category", { oldName, newName }),
-  deleteCategory: (category: string) => invoke<string[]>("delete_category", { category }),
-  moveNoteCategory: (id: string, category: string) =>
-    invoke<Note>("move_note_category", { id, category }),
-  importMarkdown: (path: string, category: string) =>
-    invoke<Note>("notes_import_markdown", { path, category }),
+  importMarkdown: (path: string) =>
+    invoke<Note>("notes_import_markdown", { path }),
   exportMarkdown: (id: string, path: string) =>
     invoke<void>("notes_export_markdown", { id, path }),
   readExternalFile: (path: string) => invoke<string>("read_external_file", { path }),
   saveExternalFile: (path: string, content: string) =>
     invoke<void>("save_external_file", { path, content }),
-  openNotepadWindow: () => invoke<void>("open_notepad_window"),
+  openExternalUrl: (url: string) => invoke<void>("open_external_url", { url }),
   openTileWindow: (id: string) => invoke<void>("open_tile_window", { id }),
   getTileState: (id: string) => invoke<TileState>("tile_get_state", { id }),
   toggleMainWindow: () => invoke<void>("toggle_main_window"),

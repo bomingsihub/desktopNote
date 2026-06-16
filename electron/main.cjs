@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, Tray, globalShortcut, ipcMain, dialog } = require("electron");
+const { app, BrowserWindow, Menu, Tray, globalShortcut, ipcMain, dialog, shell } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
@@ -10,6 +10,7 @@ const devUrl = process.env.VITE_DEV_SERVER_URL;
 const HIDDEN_START_ARG = "--hidden-start";
 const TODO_MARKER = "[[desktop-note:todo]]";
 const TODO_META_RE = /\s*<!--dn-(bucket|created):[^>]+-->/g;
+const APP_ICON = path.join(__dirname, "icons", "icon.png");
 
 function appDir() {
   const dir = app.getPath("userData");
@@ -25,10 +26,6 @@ function defaultNotesDir() {
 
 function configPath() {
   return path.join(appDir(), "config.json");
-}
-
-function categoriesPath() {
-  return path.join(appDir(), "categories.json");
 }
 
 function metadataPath(notesDir, id) {
@@ -87,7 +84,6 @@ function defaultConfig() {
   return {
     locale: "zh-CN",
     notesDir: defaultNotesDir(),
-    globalShortcut: "Ctrl+Space",
     toggleVisibilityShortcut: "Ctrl+Alt+N",
     closeToTray: true,
     autostart: true,
@@ -106,17 +102,9 @@ function defaultConfig() {
     tileCtrlClose: true,
     tileRenderMarkdown: true,
     renderHtmlMarkdown: false,
-    openAtCursor: true,
     pinnedTileIds: [],
     tileStates: {},
-    surfaceWidth: 440,
-    surfaceHeight: 360,
   };
-}
-
-function readJson(file, fallback) {
-  if (!fs.existsSync(file)) return fallback;
-  return JSON.parse(fs.readFileSync(file, "utf8"));
 }
 
 function readConfig() {
@@ -357,34 +345,23 @@ function updateNote(id, request) {
   return note;
 }
 
-function listCategories() {
-  return readJson(categoriesPath(), []);
-}
-
-function writeCategories(categories) {
-  const unique = [...new Set(categories.map((item) => item.trim()).filter(Boolean))].sort();
-  fs.writeFileSync(categoriesPath(), JSON.stringify(unique, null, 2));
-  return unique;
-}
-
 function createWindow(surface = "main", id = "", options = {}) {
   const isMain = surface === "main";
-  const isPad = surface === "pad";
   const isTile = surface === "tile";
   const show = options.show ?? true;
   const tileState = isTile ? readTileState(id) : {};
   const tileBounds = isTile ? normalizeBounds(tileState.bounds) : null;
   const browserWindow = new BrowserWindow({
     ...(tileBounds ? tileBounds : {}),
-    width: tileBounds?.width ?? (isMain ? 1120 : isPad ? 440 : 360),
-    height: tileBounds?.height ?? (isMain ? 720 : isPad ? 360 : 260),
-    minWidth: isMain ? 880 : isPad ? 320 : 220,
-    minHeight: isMain ? 560 : isPad ? 260 : 160,
+    width: tileBounds?.width ?? (isMain ? 1120 : 360),
+    height: tileBounds?.height ?? (isMain ? 720 : 260),
+    minWidth: isMain ? 880 : 220,
+    minHeight: isMain ? 560 : 160,
     frame: false,
     transparent: true,
     resizable: true,
     show,
-    alwaysOnTop: isPad,
+    icon: APP_ICON,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
@@ -416,10 +393,6 @@ function createWindow(surface = "main", id = "", options = {}) {
   });
 
   return browserWindow;
-}
-
-function openNotepadWindow() {
-  return createWindow("pad");
 }
 
 function openTileWindow(id, shouldPin = true) {
@@ -501,17 +474,15 @@ function shortcut(value) {
 function registerShortcuts() {
   globalShortcut.unregisterAll();
   const config = readConfig();
-  if (config.globalShortcut) globalShortcut.register(shortcut(config.globalShortcut), openNotepadWindow);
   if (config.toggleVisibilityShortcut) globalShortcut.register(shortcut(config.toggleVisibilityShortcut), toggleMainWindow);
 }
 
 function setupTray() {
-  tray = new Tray(path.join(__dirname, "icons", "icon.png"));
+  tray = new Tray(APP_ICON);
   tray.setToolTip("云笺阁");
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: "显示/隐藏", click: toggleMainWindow },
-      { label: "快捷便签", click: openNotepadWindow },
       {
         label: "退出",
         click: () => {
@@ -561,41 +532,25 @@ function setupIpc() {
       .forEach((window) => window.close());
     emitNotesChanged();
   });
-  handle("list_categories", () => listCategories());
-  handle("create_category", ({ category }) => writeCategories([...listCategories(), category]));
-  handle("rename_category", ({ oldName, newName }) => {
-    const dir = notesDir();
-    for (const metadata of listNotes()) {
-      if (metadata.category === oldName) writeNote(dir, { ...loadNote(dir, metadata.id), category: newName });
-    }
-    emitNotesChanged();
-    return writeCategories(listCategories().map((item) => (item === oldName ? newName : item)));
-  });
-  handle("delete_category", ({ category }) => {
-    const dir = notesDir();
-    for (const metadata of listNotes()) {
-      if (metadata.category === category) writeNote(dir, { ...loadNote(dir, metadata.id), category: "" });
-    }
-    emitNotesChanged();
-    return writeCategories(listCategories().filter((item) => item !== category));
-  });
-  handle("move_note_category", ({ id, category }) => {
-    const dir = notesDir();
-    const note = { ...loadNote(dir, id), category, updatedAt: now() };
-    writeNote(dir, note);
-    emitNotesChanged();
-    return note;
-  });
-  handle("notes_import_markdown", ({ path: filePath, category }) => {
+  handle("notes_import_markdown", ({ path: filePath }) => {
     const content = fs.readFileSync(filePath, "utf8");
-    return createNote({ title: path.basename(filePath, path.extname(filePath)), content, category });
+    return createNote({ title: path.basename(filePath, path.extname(filePath)), content, category: "" });
   });
   handle("notes_export_markdown", ({ id, path: filePath }) => {
     fs.writeFileSync(filePath, loadNote(notesDir(), id).content);
   });
   handle("read_external_file", ({ path: filePath }) => fs.readFileSync(filePath, "utf8"));
   handle("save_external_file", ({ path: filePath, content }) => fs.writeFileSync(filePath, content));
-  handle("open_notepad_window", () => openNotepadWindow());
+  handle("open_external_url", ({ url }) => {
+    if (typeof url !== "string") return;
+    try {
+      const parsed = new URL(url);
+      if (!["http:", "https:", "mailto:"].includes(parsed.protocol)) return;
+      return shell.openExternal(parsed.toString());
+    } catch {
+      return;
+    }
+  });
   handle("open_tile_window", ({ id }) => openTileWindow(id));
   handle("toggle_main_window", () => toggleMainWindow());
   handle("window_minimize", ({ id }) => BrowserWindow.fromId(id)?.minimize());
