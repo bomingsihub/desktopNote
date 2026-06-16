@@ -366,6 +366,7 @@ function createWindow(surface = "main", id = "", options = {}) {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
+      spellcheck: false,
     },
   });
 

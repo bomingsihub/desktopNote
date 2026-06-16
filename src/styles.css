@@ -880,6 +880,7 @@ select {
   display: flex;
   align-items: center;
   gap: 3px;
+  transform: translateY(-4px);
 }
 
 .tile-title-input {
@@ -898,16 +899,16 @@ select {
 }
 
 .tile-actions button {
-  width: 26px;
-  min-width: 26px;
-  height: 26px;
+  width: 16px;
+  min-width: 16px;
+  height: 16px;
   padding: 0;
   display: grid;
   place-items: center;
   border-radius: 50%;
   color: rgba(63, 59, 51, 0.76);
   background: transparent;
-  font-size: 14px;
+  font-size: 9px;
   line-height: 1;
   box-shadow: none;
 }

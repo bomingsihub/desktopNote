@@ -521,7 +521,7 @@ async function toggleTileFixed() {
   <div v-if="isMain && !config" class="boot">正在启动云笺阁...</div>
   <div v-else-if="isTile && (!tileNote || !config)" class="boot">正在打开磁贴...</div>
 
-  <div v-else-if="isMain && config" class="app-shell">
+  <div v-else-if="isMain && config" class="app-shell" spellcheck="false">
     <aside class="sidebar">
       <div class="window-bar" data-drag-region>
         <img class="app-brand-logo" :src="logoUrl" alt="云笺阁" />
@@ -545,7 +545,7 @@ async function toggleTileFixed() {
         <button @click="importMarkdown">导入</button>
         <button @click="openExternal">外部</button>
       </div>
-      <input v-model="query" class="search" placeholder="搜索笔记或内容" />
+      <input v-model="query" class="search" placeholder="搜索笔记或内容" spellcheck="false" />
       <div class="note-list">
         <div
           v-for="note in filtered"
@@ -631,6 +631,7 @@ async function toggleTileFixed() {
           v-model="title"
           :disabled="!selectedId"
           placeholder="无标题笔记"
+          spellcheck="false"
           @input="saveState = 'dirty'"
         />
         <span>
@@ -658,6 +659,7 @@ async function toggleTileFixed() {
               :data-todo-index="index"
               :value="item.text"
               placeholder="输入待办事项"
+              spellcheck="false"
               @input="updateTodoText(index, ($event.target as HTMLInputElement).value)"
               @keydown="handleTodoKeydown($event, index)"
             />
@@ -673,6 +675,7 @@ async function toggleTileFixed() {
           :disabled="!selectedId"
           :style="{ fontSize: `${config.fontSize}px`, tabSize: config.tabIndentSize }"
           placeholder="开始写作……"
+          spellcheck="false"
           @input="saveState = 'dirty'"
           @keydown="handleEditorKeydown"
         />
@@ -699,6 +702,7 @@ async function toggleTileFixed() {
 
   <Tile
     v-else-if="isTile && tileNote && config"
+    spellcheck="false"
     :title="tileNote.title"
     :content="tileNote.content"
     :color="config.tileColorMode === 'custom' ? config.tileColor : '#f8f5ec'"

@@ -176,6 +176,7 @@ function selectTileTodoBucket(bucket: string) {
         :value="title"
         placeholder="Untitled note"
         :readonly="isTodo && !editing"
+        spellcheck="false"
         :style="{ width: `${Math.max(4, Math.min(14, (title || 'Untitled note').length + 1))}em` }"
         @input="$emit('updateTitle', ($event.target as HTMLInputElement).value)"
       />
@@ -219,6 +220,7 @@ function selectTileTodoBucket(bucket: string) {
               :value="item.text"
               placeholder="Todo item"
               :readonly="!editing"
+              spellcheck="false"
               @input="updateTileTodoText(index, ($event.target as HTMLInputElement).value)"
               @keydown="handleTileTodoKeydown($event, index)"
             />
@@ -231,6 +233,7 @@ function selectTileTodoBucket(bucket: string) {
         class="tile-editor"
         :value="content"
         placeholder="Write something..."
+        spellcheck="false"
         :style="{ fontSize: `${fontSize}px` }"
         @input="$emit('updateContent', ($event.target as HTMLTextAreaElement).value)"
       />
