@@ -903,6 +903,14 @@ select {
   -webkit-app-region: no-drag;
 }
 
+.tile-body,
+.tile-body .markdown-preview,
+.tile-body pre {
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-app-region: no-drag;
+}
+
 .tile-actions {
   flex: 0 0 auto;
   display: flex;
@@ -1122,7 +1130,7 @@ select {
   accent-color: var(--bamboo);
 }
 
-.tile-todo-row input:not([type]) {
+.tile-todo-row input[type="text"] {
   width: 100%;
   min-width: 0;
   height: 28px;
@@ -1133,11 +1141,11 @@ select {
   font: inherit;
 }
 
-.tile-todo-row.readonly input:not([type]) {
+.tile-todo-row.readonly input[type="text"] {
   pointer-events: none;
 }
 
-.tile-todo-row.done input:not([type]) {
+.tile-todo-row.done input[type="text"] {
   color: rgba(68, 63, 53, 0.58);
   text-decoration: line-through;
 }

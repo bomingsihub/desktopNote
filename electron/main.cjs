@@ -361,6 +361,7 @@ function createWindow(surface = "main", id = "", options = {}) {
     transparent: true,
     resizable: true,
     show,
+    skipTaskbar: isTile || (isMain && !show),
     icon: APP_ICON,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -384,7 +385,7 @@ function createWindow(surface = "main", id = "", options = {}) {
     browserWindow.on("close", (event) => {
       if (readConfig().closeToTray && !app.isQuitting) {
         event.preventDefault();
-        browserWindow.hide();
+        hideMainWindow();
       }
     });
   }
@@ -394,6 +395,27 @@ function createWindow(surface = "main", id = "", options = {}) {
   });
 
   return browserWindow;
+}
+
+function hideMainWindow() {
+  if (!mainWindow) return;
+  mainWindow.setSkipTaskbar(true);
+  hideTileWindowsFromTaskbar();
+  mainWindow.hide();
+}
+
+function showMainWindow() {
+  if (!mainWindow) return;
+  mainWindow.setSkipTaskbar(false);
+  hideTileWindowsFromTaskbar();
+  mainWindow.show();
+  mainWindow.focus();
+}
+
+function hideTileWindowsFromTaskbar() {
+  BrowserWindow.getAllWindows()
+    .filter((window) => window.__tileId)
+    .forEach((window) => window.setSkipTaskbar(true));
 }
 
 function openTileWindow(id, shouldPin = true) {
@@ -443,14 +465,13 @@ function setDesktopFixed(id, value) {
   const fixed = Boolean(value);
   if (window.__tileId) {
     updateTileState(window.__tileId, (state) => ({ ...state, fixed, bounds: normalizeBounds(window.getBounds()) }), true);
+    window.setSkipTaskbar(true);
   }
   window.setAlwaysOnTop(false);
-  window.setFocusable(!fixed);
+  window.setFocusable(true);
   if (fixed) {
-    window.blur();
     moveWindowToBottom(window);
   } else {
-    window.setFocusable(true);
     window.focus();
   }
 }
@@ -461,11 +482,8 @@ function restorePinnedTiles() {
 
 function toggleMainWindow() {
   if (!mainWindow) return;
-  if (mainWindow.isVisible()) mainWindow.hide();
-  else {
-    mainWindow.show();
-    mainWindow.focus();
-  }
+  if (mainWindow.isVisible()) hideMainWindow();
+  else showMainWindow();
 }
 
 function shortcut(value) {
@@ -568,7 +586,15 @@ function setupIpc() {
   handle("window_set_desktop_fixed", ({ id, value }) => setDesktopFixed(id, value));
   handle("tile_get_state", ({ id }) => readTileState(id));
   handle("window_close", ({ id }) => BrowserWindow.fromId(id)?.close());
-  handle("window_hide", ({ id }) => BrowserWindow.fromId(id)?.hide());
+  handle("window_hide", ({ id }) => {
+    const window = BrowserWindow.fromId(id);
+    if (!window) return;
+    if (window === mainWindow) {
+      hideMainWindow();
+      return;
+    }
+    window.hide();
+  });
   handle("dialog_open", async ({ options }) => {
     const result = await dialog.showOpenDialog(options);
     if (result.canceled) return null;

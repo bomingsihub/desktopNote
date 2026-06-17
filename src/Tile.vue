@@ -216,6 +216,7 @@ function selectTileTodoBucket(bucket: string) {
           >
             <input type="checkbox" :checked="item.done" @change="toggleTileTodo(index)" />
             <input
+              type="text"
               :data-tile-todo-index="index"
               :value="item.text"
               placeholder="Todo item"
