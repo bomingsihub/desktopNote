@@ -974,6 +974,7 @@ select {
 
 .tile-body:has(.tile-todo-shell) {
   padding-left: 0;
+  overflow: hidden;
 }
 
 .tile-editor {
@@ -1000,10 +1001,12 @@ select {
 }
 
 .tile-todo-shell {
+  height: 100%;
   min-height: 100%;
   display: grid;
   grid-template-columns: 82px minmax(0, 1fr);
   gap: 0;
+  overflow: hidden;
 }
 
 .tile-todo-buckets {
@@ -1099,11 +1102,20 @@ select {
 }
 
 .tile-todo-list {
+  min-height: 0;
   display: grid;
   align-content: start;
   gap: 7px;
   padding-top: 2px;
   padding-right: 17px;
+  overflow: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.tile-todo-list::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .tile-todo-row {

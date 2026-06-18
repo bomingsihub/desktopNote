@@ -424,7 +424,14 @@ function openTileWindow(id, shouldPin = true) {
   const existing = BrowserWindow.getAllWindows().find((window) => window.__tileId === id);
   if (existing) {
     if (shouldPin) pinTile(id);
-    existing.focus();
+    if (readTileState(id).fixed && !existing.__tileEditing) {
+      existing.setAlwaysOnTop(false);
+      existing.setFocusable(false);
+      moveWindowToBottom(existing);
+    } else {
+      existing.setFocusable(true);
+      existing.focus();
+    }
     return;
   }
   if (shouldPin) pinTile(id);
@@ -436,7 +443,10 @@ function openTileWindow(id, shouldPin = true) {
     saveTileBounds(id, window);
     if (!app.isQuitting) unpinTile(id);
   });
-  if (readTileState(id).fixed) setDesktopFixed(window.id, true);
+  if (readTileState(id).fixed) {
+    setDesktopFixed(window.id, true);
+    window.once("ready-to-show", () => moveWindowToBottom(window));
+  }
 }
 
 function nativeWindowHandle(window) {
@@ -470,12 +480,22 @@ function setDesktopFixed(id, value) {
     window.setSkipTaskbar(true);
   }
   window.setAlwaysOnTop(false);
-  window.setFocusable(true);
-  if (fixed) {
+  window.setFocusable(!fixed || Boolean(window.__tileEditing));
+  if (fixed && !window.__tileEditing) {
     moveWindowToBottom(window);
   } else {
     window.focus();
   }
+}
+
+function setTileEditing(id, value) {
+  const window = BrowserWindow.fromId(id);
+  if (!window) return;
+  window.__tileEditing = Boolean(value);
+  const fixed = window.__tileId ? readTileState(window.__tileId).fixed : false;
+  window.setAlwaysOnTop(false);
+  window.setFocusable(window.__tileEditing || !fixed);
+  if (fixed && !window.__tileEditing) moveWindowToBottom(window);
 }
 
 function restorePinnedTiles() {
@@ -586,6 +606,7 @@ function setupIpc() {
     if (window) window.setAlwaysOnTop(Boolean(value));
   });
   handle("window_set_desktop_fixed", ({ id, value }) => setDesktopFixed(id, value));
+  handle("window_set_tile_editing", ({ id, value }) => setTileEditing(id, value));
   handle("tile_get_state", ({ id }) => readTileState(id));
   handle("window_close", ({ id }) => BrowserWindow.fromId(id)?.close());
   handle("window_hide", ({ id }) => {

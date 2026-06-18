@@ -179,6 +179,7 @@ async function bootstrapTile() {
   tileNote.value = note;
   tileFixed.value = tileState.fixed;
   tileStatus.value = "saved";
+  await appWindow.setTileEditing(tileEditing.value);
 }
 
 onMounted(() => {
@@ -625,6 +626,11 @@ async function toggleTileFixed() {
   tileFixed.value = nextFixed;
   await appWindow.setDesktopFixed(nextFixed);
 }
+
+async function toggleTileEditing() {
+  tileEditing.value = !tileEditing.value;
+  await appWindow.setTileEditing(tileEditing.value);
+}
 </script>
 
 <template>
@@ -823,7 +829,7 @@ async function toggleTileFixed() {
     @copy="copyTileContent"
     @save="saveTileNote"
     @toggle-fixed="toggleTileFixed"
-    @toggle-edit="tileEditing = !tileEditing"
+    @toggle-edit="toggleTileEditing"
     @update-title="updateTileTitle"
     @update-content="updateTileContent"
   />
