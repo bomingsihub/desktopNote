@@ -349,6 +349,7 @@ function createWindow(surface = "main", id = "", options = {}) {
   const isMain = surface === "main";
   const isTile = surface === "tile";
   const show = options.show ?? true;
+  const startHidden = isMain && !show;
   const tileState = isTile ? readTileState(id) : {};
   const tileBounds = isTile ? normalizeBounds(tileState.bounds) : null;
   const browserWindow = new BrowserWindow({
@@ -361,7 +362,7 @@ function createWindow(surface = "main", id = "", options = {}) {
     transparent: true,
     resizable: true,
     show,
-    skipTaskbar: isTile || (isMain && !show),
+    skipTaskbar: isTile || startHidden,
     icon: APP_ICON,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -382,6 +383,7 @@ function createWindow(surface = "main", id = "", options = {}) {
 
   if (isMain) {
     mainWindow = browserWindow;
+    if (startHidden) browserWindow.once("ready-to-show", hideMainWindow);
     browserWindow.on("close", (event) => {
       if (readConfig().closeToTray && !app.isQuitting) {
         event.preventDefault();
