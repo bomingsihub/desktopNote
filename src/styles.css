@@ -1068,9 +1068,21 @@ select {
   color: #356b48;
 }
 
+.tile-todo-bucket.overdue {
+  color: #9d352f;
+}
+
+.tile-todo-bucket.overdue-alert {
+  animation: tile-todo-overdue-shake 0.72s ease-in-out infinite;
+}
+
 .tile-todo-bucket.active {
   width: 74px;
   color: #356b48;
+}
+
+.tile-todo-bucket.active.overdue {
+  color: #9d352f;
 }
 
 .tile-todo-bucket.active::before {
@@ -1164,6 +1176,25 @@ select {
 .tile-todo-row.done input[type="text"] {
   color: rgba(68, 63, 53, 0.58);
   text-decoration: line-through;
+}
+
+@keyframes tile-todo-overdue-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-2px);
+  }
+  40% {
+    transform: translateX(2px);
+  }
+  60% {
+    transform: translateX(-1px);
+  }
+  80% {
+    transform: translateX(1px);
+  }
 }
 
 .tile-todo-row button {

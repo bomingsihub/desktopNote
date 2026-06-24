@@ -46,6 +46,23 @@ function todoCreatedTime(item: TileTodoItem) {
   return Number.isNaN(time) ? Number(item.createdAt) || 0 : time;
 }
 
+function todoBucketTime(bucket: string) {
+  const normalized = normalizeTodoBucket(bucket);
+  const match = /^(\d{2})(\d{2})(\d{2})$/.exec(normalized);
+  if (!match) return Number.POSITIVE_INFINITY;
+  return new Date(Number(`20${match[1]}`), Number(match[2]) - 1, Number(match[3])).getTime();
+}
+
+function isTileTodoOverdue(item: TileTodoItem) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return !item.done && Boolean(item.text.trim()) && todoBucketTime(item.bucket) < today.getTime();
+}
+
+function isTileTodoBucketOverdue(bucket: string) {
+  return tileTodoItems.value.some((item) => normalizeTodoBucket(item.bucket) === bucket && isTileTodoOverdue(item));
+}
+
 const isTodo = computed(() => props.content.startsWith(TODO_MARKER));
 const tileTodoItems = computed(() => {
   if (!isTodo.value) return [];
@@ -232,6 +249,8 @@ function selectTileTodoBucket(bucket: string) {
             :class="[
               'tile-todo-bucket',
               activeTodoBucket === bucket ? 'active' : '',
+              isTileTodoBucketOverdue(bucket) ? 'overdue' : '',
+              !editing && isTileTodoBucketOverdue(bucket) ? 'overdue-alert' : '',
             ]"
             @click="selectTileTodoBucket(bucket)"
           >
