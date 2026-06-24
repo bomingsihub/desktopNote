@@ -55,6 +55,7 @@ export const api = {
   saveExternalFile: (path: string, content: string) =>
     invoke<void>("save_external_file", { path, content }),
   openExternalUrl: (url: string) => invoke<void>("open_external_url", { url }),
+  writeClipboardText: (text: string) => invoke<void>("clipboard_write_text", { text }),
   openTileWindow: (id: string) => invoke<void>("open_tile_window", { id }),
   getTileState: (id: string) => invoke<TileState>("tile_get_state", { id }),
   toggleMainWindow: () => invoke<void>("toggle_main_window"),

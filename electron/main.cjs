@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, Tray, globalShortcut, ipcMain, dialog, shell } = require("electron");
+const { app, BrowserWindow, Menu, Tray, globalShortcut, ipcMain, dialog, shell, clipboard } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
@@ -426,7 +426,7 @@ function openTileWindow(id, shouldPin = true) {
     if (shouldPin) pinTile(id);
     if (readTileState(id).fixed && !existing.__tileEditing) {
       existing.setAlwaysOnTop(false);
-      existing.setFocusable(false);
+      existing.setFocusable(!isTodoTile(id));
       moveWindowToBottom(existing);
     } else {
       existing.setFocusable(true);
@@ -439,6 +439,7 @@ function openTileWindow(id, shouldPin = true) {
   window.__tileId = id;
   window.on("move", () => saveTileBounds(id, window));
   window.on("resize", () => saveTileBounds(id, window));
+  window.on("focus", () => keepFixedTileOnDesktop(window));
   window.on("close", () => {
     saveTileBounds(id, window);
     if (!app.isQuitting) unpinTile(id);
@@ -471,16 +472,33 @@ public static class Win32WindowOrder {
   execFile("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script], () => {});
 }
 
+function keepFixedTileOnDesktop(window) {
+  if (!window.__tileId || window.__tileEditing || !readTileState(window.__tileId).fixed) return;
+  setTimeout(() => {
+    if (!window.isDestroyed()) moveWindowToBottom(window);
+  }, 0);
+}
+
+function isTodoTile(id) {
+  if (!id) return false;
+  try {
+    return loadNote(notesDir(), id).content.startsWith(TODO_MARKER);
+  } catch {
+    return false;
+  }
+}
+
 function setDesktopFixed(id, value) {
   const window = BrowserWindow.fromId(id);
   if (!window) return;
   const fixed = Boolean(value);
+  const isFixedTodo = fixed && window.__tileId && isTodoTile(window.__tileId);
   if (window.__tileId) {
     updateTileState(window.__tileId, (state) => ({ ...state, fixed, bounds: normalizeBounds(window.getBounds()) }), true);
     window.setSkipTaskbar(true);
   }
   window.setAlwaysOnTop(false);
-  window.setFocusable(!fixed || Boolean(window.__tileEditing));
+  window.setFocusable(!isFixedTodo || Boolean(window.__tileEditing));
   if (fixed && !window.__tileEditing) {
     moveWindowToBottom(window);
   } else {
@@ -493,8 +511,9 @@ function setTileEditing(id, value) {
   if (!window) return;
   window.__tileEditing = Boolean(value);
   const fixed = window.__tileId ? readTileState(window.__tileId).fixed : false;
+  const isFixedTodo = fixed && window.__tileId && isTodoTile(window.__tileId);
   window.setAlwaysOnTop(false);
-  window.setFocusable(window.__tileEditing || !fixed);
+  window.setFocusable(window.__tileEditing || !isFixedTodo);
   if (fixed && !window.__tileEditing) moveWindowToBottom(window);
 }
 
@@ -534,6 +553,25 @@ function setupTray() {
     ]),
   );
   tray.on("click", toggleMainWindow);
+}
+
+function setupApplicationMenu() {
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      {
+        label: "编辑",
+        submenu: [
+          { role: "undo", label: "撤销" },
+          { role: "redo", label: "重做" },
+          { type: "separator" },
+          { role: "cut", label: "剪切" },
+          { role: "copy", label: "复制" },
+          { role: "paste", label: "粘贴" },
+          { role: "selectAll", label: "全选" },
+        ],
+      },
+    ]),
+  );
 }
 
 function handle(channel, fn) {
@@ -592,6 +630,9 @@ function setupIpc() {
       return;
     }
   });
+  handle("clipboard_write_text", ({ text }) => {
+    clipboard.writeText(typeof text === "string" ? text : "");
+  });
   handle("open_tile_window", ({ id }) => openTileWindow(id));
   handle("toggle_main_window", () => toggleMainWindow());
   handle("window_minimize", ({ id }) => BrowserWindow.fromId(id)?.minimize());
@@ -630,6 +671,7 @@ function setupIpc() {
 }
 
 app.whenReady().then(() => {
+  setupApplicationMenu();
   setupIpc();
   createWindow("main", "", { show: !shouldStartHidden() });
   restorePinnedTiles();

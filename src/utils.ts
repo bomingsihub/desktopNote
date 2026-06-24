@@ -42,6 +42,34 @@ export function formatShortDate(value: string): string {
   return `${date.getMonth() + 1}/${date.getDate()}`;
 }
 
+export function formatTodoBucketDate(offsetDays = 0): string {
+  const date = new Date();
+  date.setDate(date.getDate() + offsetDays);
+  const year = `${date.getFullYear()}`.slice(-2);
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}${month}${day}`;
+}
+
+export function formatTodoDateInput(offsetDays = 0): string {
+  const date = new Date();
+  date.setDate(date.getDate() + offsetDays);
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+export function normalizeTodoBucket(bucket: string): string {
+  const trimmed = bucket.trim();
+  if (trimmed === "今日") return formatTodoBucketDate();
+  if (trimmed === "未来") return formatTodoBucketDate(1);
+  if (trimmed === "昨日") return formatTodoBucketDate(-1);
+  const dateMatch = /^(\d{2}|\d{4})-?(\d{2})-?(\d{2})$/.exec(trimmed);
+  if (dateMatch) return `${dateMatch[1].slice(-2)}${dateMatch[2]}${dateMatch[3]}`;
+  return trimmed || formatTodoBucketDate();
+}
+
 export function formatTime(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "--:--";

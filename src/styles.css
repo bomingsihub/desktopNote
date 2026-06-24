@@ -639,7 +639,7 @@ select {
 .todo-row {
   min-height: 38px;
   display: grid;
-  grid-template-columns: 22px 44px minmax(0, 1fr) 28px;
+  grid-template-columns: 22px 54px minmax(0, 1fr) 28px;
   align-items: center;
   gap: 8px;
   padding: 4px 8px;
@@ -667,6 +667,15 @@ select {
   background: var(--bamboo-soft);
   font-size: 12px;
   white-space: nowrap;
+}
+
+.todo-date-input,
+.tile-todo-date-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .todo-row input[type="text"],
@@ -710,6 +719,9 @@ select {
 .markdown-preview {
   line-height: 1.85;
   color: var(--ink-soft);
+  user-select: text;
+  -webkit-user-select: text;
+  -webkit-app-region: no-drag;
 }
 
 .markdown-preview a {
@@ -1004,25 +1016,37 @@ select {
   height: 100%;
   min-height: 100%;
   display: grid;
-  grid-template-columns: 82px minmax(0, 1fr);
+  grid-template-columns: 78px minmax(0, 1fr);
   gap: 0;
   overflow: hidden;
 }
 
 .tile-todo-buckets {
+  height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: 3px;
   padding: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.tile-todo-buckets::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
 
 .tile-todo-bucket {
   position: relative;
+  flex: 0 0 32px;
   width: 66px;
   min-width: 0;
   height: 32px;
-  padding: 0 0 0 24px;
+  padding: 0 0 0 10px;
   border-radius: 0;
   color: rgba(68, 63, 53, 0.62);
   background: transparent;
@@ -1045,7 +1069,7 @@ select {
 }
 
 .tile-todo-bucket.active {
-  width: 76px;
+  width: 74px;
   color: #356b48;
 }
 
@@ -1058,32 +1082,12 @@ select {
   clip-path: polygon(0 0, calc(100% - 9px) 0, 100% 50%, calc(100% - 9px) 100%, 0 100%);
 }
 
-.tile-todo-bucket.custom {
-  width: 66px;
-  margin-left: 10px;
-  padding-left: 14px;
-  color: rgba(68, 63, 53, 0.78);
-}
-
-.tile-todo-bucket.custom::before {
-  content: "";
-  position: absolute;
-  inset: 3px 0;
-  z-index: 0;
-  background: rgba(255, 255, 255, 0.12);
-  clip-path: polygon(0 0, calc(100% - 7px) 0, 100% 50%, calc(100% - 7px) 100%, 0 100%);
-}
-
-.tile-todo-bucket.custom.active::before {
-  inset: 0;
-  background: rgba(255, 255, 255, 0.2);
-}
-
 .tile-todo-buckets .tile-todo-bucket-add {
+  flex: 0 0 32px;
   width: 42px;
   min-width: 0;
   height: 32px;
-  margin: 10px 0 0 20px;
+  margin: 10px 0 0 10px;
   padding: 0;
   display: grid;
   place-items: center;

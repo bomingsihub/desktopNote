@@ -20,8 +20,11 @@ import {
   filterNotes,
   formatShortDate,
   formatTime,
+  formatTodoBucketDate,
+  formatTodoDateInput,
   insertMarkdown,
   metadataFromNote,
+  normalizeTodoBucket,
   normalizeViewMode,
   noteTitle,
   safeMarkdownFileName,
@@ -41,8 +44,8 @@ const toolbar = [
 ] as const;
 
 const TODO_MARKER = "[[desktop-note:todo]]";
-const TODO_DEFAULT_BUCKET = "今日";
-const TODO_BUCKETS = ["今日", "未来", "昨日"] as const;
+const TODO_BUCKET_MARKER = "[[desktop-note:todo-buckets]]";
+const TODO_BUCKETS_RE = /\s*<!--dn-buckets:([^>]+)-->/;
 const TODO_META_RE = /<!--dn-(bucket|created):([^>]+)-->/g;
 
 type TodoItem = {
@@ -52,8 +55,8 @@ type TodoItem = {
   createdAt: string;
 };
 
-function newTodoItem(bucket = TODO_DEFAULT_BUCKET): TodoItem {
-  return { done: false, text: "", bucket, createdAt: new Date().toISOString() };
+function newTodoItem(bucket = formatTodoBucketDate()): TodoItem {
+  return { done: false, text: "", bucket: normalizeTodoBucket(bucket), createdAt: new Date().toISOString() };
 }
 
 function readTodoLine(line: string, index: number): TodoItem {
@@ -66,14 +69,14 @@ function readTodoLine(line: string, index: number): TodoItem {
   return {
     done: match ? match[1].toLowerCase() === "x" : false,
     text,
-    bucket: meta.bucket || TODO_DEFAULT_BUCKET,
+    bucket: normalizeTodoBucket(meta.bucket || formatTodoBucketDate()),
     createdAt: meta.created || `${index}`,
   };
 }
 
 function writeTodoLine(item: TodoItem) {
-  const bucket = item.bucket || TODO_DEFAULT_BUCKET;
-  const bucketMeta = bucket === TODO_DEFAULT_BUCKET ? "" : ` <!--dn-bucket:${encodeURIComponent(bucket)}-->`;
+  const bucket = item.bucket || formatTodoBucketDate();
+  const bucketMeta = ` <!--dn-bucket:${encodeURIComponent(normalizeTodoBucket(bucket))}-->`;
   const createdMeta = ` <!--dn-created:${encodeURIComponent(item.createdAt || new Date().toISOString())}-->`;
   return `[${item.done ? "x" : " "}] ${item.text}${bucketMeta}${createdMeta}`;
 }
@@ -106,6 +109,7 @@ const createMenuOpen = ref(false);
 const todoBucketMenuOpen = ref(false);
 const error = ref("");
 const textRef = ref<HTMLTextAreaElement | null>(null);
+const todoDateInputRef = ref<HTMLInputElement | null>(null);
 const swipedItem = ref("");
 const swipeStart = ref<{ key: string; x: number; y: number } | null>(null);
 const suppressSwipeClickUntil = ref(0);
@@ -125,16 +129,23 @@ const isExternal = computed(() => Boolean(selectedExternal.value));
 const isTodoNote = computed(() => content.value.startsWith(TODO_MARKER));
 const todoItems = computed(() => {
   if (!isTodoNote.value) return [];
-  const raw = content.value.slice(TODO_MARKER.length).replace(/^\r?\n/, "");
-  const lines = raw.split(/\r?\n/);
+  const raw = content.value
+    .slice(TODO_MARKER.length)
+    .replace(TODO_BUCKET_MARKER, "")
+    .replace(TODO_BUCKETS_RE, "")
+    .replace(/^\r?\n/, "");
+  const lines = raw.split(/\r?\n/).filter((line) => line.trim());
   const items = lines.map(readTodoLine);
   return items.length ? items : [newTodoItem()];
 });
 const todoBuckets = computed(() => {
-  const customBuckets = todoItems.value
-    .map((item) => item.bucket || TODO_DEFAULT_BUCKET)
-    .filter((bucket) => !TODO_BUCKETS.includes(bucket as (typeof TODO_BUCKETS)[number]));
-  return [...TODO_BUCKETS, ...Array.from(new Set(customBuckets))];
+  const bucketMatch = content.value.match(TODO_BUCKETS_RE);
+  const savedBuckets = bucketMatch?.[1]
+    .split(",")
+    .map((bucket) => normalizeTodoBucket(decodeURIComponent(bucket)))
+    .filter(Boolean) ?? [];
+  const itemBuckets = todoItems.value.map((item) => normalizeTodoBucket(item.bucket));
+  return Array.from(new Set([...savedBuckets, ...itemBuckets])).sort((a, b) => b.localeCompare(a));
 });
 
 async function refresh() {
@@ -196,7 +207,11 @@ if (isMain.value) {
     closeCreateMenu();
   };
   onMounted(async () => {
-    stop.value = await listen("notes-changed", () => void refresh());
+    stop.value = await listen("notes-changed", async () => {
+      await refresh();
+      if (!selectedId.value || isExternal.value || saveState.value === "dirty" || saveState.value === "saving") return;
+      await loadNote(selectedId.value);
+    });
     document.addEventListener("pointerdown", closeCreateMenuOnOutsideClick);
   });
   onUnmounted(() => {
@@ -258,8 +273,19 @@ async function createTodoNote() {
   await loadNote(note.id);
 }
 
-function writeTodoItems(items: TodoItem[]) {
-  content.value = `${TODO_MARKER}\n${items.map(writeTodoLine).join("\n")}`;
+function writeTodoItems(items: TodoItem[], extraBuckets: string[] = [], removeBuckets: string[] = []) {
+  const removed = new Set(removeBuckets.map(normalizeTodoBucket));
+  const buckets = Array.from(
+    new Set([
+      ...todoBuckets.value,
+      ...extraBuckets.map(normalizeTodoBucket),
+      ...items.map((item) => normalizeTodoBucket(item.bucket || formatTodoBucketDate())),
+    ]),
+  )
+    .filter((bucket) => !removed.has(bucket))
+    .sort((a, b) => b.localeCompare(a));
+  const bucketMeta = `${TODO_BUCKET_MARKER} <!--dn-buckets:${buckets.map((bucket) => encodeURIComponent(bucket)).join(",")}-->`;
+  content.value = `${TODO_MARKER}\n${bucketMeta}\n${items.map(writeTodoLine).join("\n")}`;
   saveState.value = "dirty";
 }
 
@@ -275,9 +301,9 @@ function toggleTodoItem(index: number) {
   writeTodoItems(items);
 }
 
-function addTodoItem(index = todoItems.value.length - 1, bucket = todoItems.value[index]?.bucket || TODO_DEFAULT_BUCKET) {
+function addTodoItem(index = todoItems.value.length - 1, bucket = todoItems.value[index]?.bucket || formatTodoBucketDate()) {
   const items = [...todoItems.value];
-  items.splice(index + 1, 0, newTodoItem(bucket));
+  items.splice(index + 1, 0, newTodoItem(normalizeTodoBucket(bucket)));
   writeTodoItems(items);
   const nextIndex = index + 1;
   void nextTick(() => {
@@ -286,8 +312,9 @@ function addTodoItem(index = todoItems.value.length - 1, bucket = todoItems.valu
 }
 
 function addTodoItemForBucket(bucket: string) {
+  bucket = normalizeTodoBucket(bucket);
   const lastIndex = todoItems.value.reduce(
-    (foundIndex, item, index) => ((item.bucket || TODO_DEFAULT_BUCKET) === bucket ? index : foundIndex),
+    (foundIndex, item, index) => (normalizeTodoBucket(item.bucket) === bucket ? index : foundIndex),
     -1,
   );
   addTodoItem(lastIndex >= 0 ? lastIndex : todoItems.value.length - 1, bucket);
@@ -295,8 +322,10 @@ function addTodoItemForBucket(bucket: string) {
 }
 
 function removeTodoItem(index: number) {
+  const removedBucket = normalizeTodoBucket(todoItems.value[index]?.bucket || formatTodoBucketDate());
   const items = todoItems.value.filter((_, itemIndex) => itemIndex !== index);
-  writeTodoItems(items.length ? items : [newTodoItem()]);
+  const hasBucketItem = items.some((item) => normalizeTodoBucket(item.bucket) === removedBucket);
+  writeTodoItems(items.length ? items : [newTodoItem()], [], hasBucketItem ? [] : [removedBucket]);
 }
 
 function handleTodoKeydown(event: KeyboardEvent, index: number) {
@@ -589,8 +618,35 @@ function contentKb(value: string) {
   return (new TextEncoder().encode(value).length / 1024).toFixed(1);
 }
 
+function addTodoItemForNewDate() {
+  const input = todoDateInputRef.value;
+  if (!input) return;
+  input.value = formatTodoDateInput();
+  input.showPicker?.();
+  input.focus();
+}
+
+function addTodoItemForDateValue(value: string) {
+  const bucket = normalizeTodoBucket(value);
+  if (!bucket) return;
+  const hasBucketItem = todoItems.value.some((item) => normalizeTodoBucket(item.bucket) === bucket);
+  const items = hasBucketItem ? todoItems.value : [...todoItems.value, newTodoItem(bucket)];
+  writeTodoItems(items, [bucket]);
+  todoBucketMenuOpen.value = false;
+}
+
+function pasteIntoPreview(event: ClipboardEvent) {
+  if (!selectedId.value || isExternal.value) return;
+  const text = event.clipboardData?.getData("text/plain");
+  if (!text) return;
+  event.preventDefault();
+  const separator = content.value && !content.value.endsWith("\n") ? "\n" : "";
+  content.value = `${content.value}${separator}${text}`;
+  saveState.value = "dirty";
+}
+
 async function copyTileContent() {
-  if (tileNote.value) await navigator.clipboard.writeText(tileNote.value.content);
+  if (tileNote.value) await api.writeClipboardText(tileNote.value.content);
 }
 
 function updateTileTitle(value: string) {
@@ -603,6 +659,7 @@ function updateTileContent(value: string) {
   if (!tileNote.value) return;
   tileNote.value = { ...tileNote.value, content: value };
   tileStatus.value = "dirty";
+  void saveTileNote();
 }
 
 async function saveTileNote() {
@@ -718,6 +775,14 @@ async function toggleTileEditing() {
             <button v-for="bucket in todoBuckets" :key="bucket" @click="addTodoItemForBucket(bucket)">
               {{ bucket }}
             </button>
+            <button @click="addTodoItemForNewDate">+ 新日期</button>
+            <input
+              ref="todoDateInputRef"
+              class="todo-date-input"
+              type="date"
+              :value="formatTodoDateInput()"
+              @change="addTodoItemForDateValue(($event.target as HTMLInputElement).value)"
+            />
           </div>
         </div>
         <button v-if="!isTodoNote" :disabled="!selectedId" @click="saveCurrent">保存</button>
@@ -770,7 +835,7 @@ async function toggleTileEditing() {
             :class="['todo-row', item.done ? 'done' : '']"
           >
             <input type="checkbox" :checked="item.done" @change="toggleTodoItem(index)" />
-            <span class="todo-bucket-label">{{ item.bucket }}</span>
+            <span class="todo-bucket-label">{{ normalizeTodoBucket(item.bucket) }}</span>
             <input
               :data-todo-index="index"
               :value="item.text"
@@ -795,7 +860,7 @@ async function toggleTileEditing() {
           @input="saveState = 'dirty'"
           @keydown="handleEditorKeydown"
         />
-        <div v-if="viewMode === 'preview' || viewMode === 'split'" class="preview-pane">
+        <div v-if="viewMode === 'preview' || viewMode === 'split'" class="preview-pane" tabindex="0" @paste="pasteIntoPreview">
           <MarkdownPreview
             :content="content"
             :font-size="config.fontSize"
