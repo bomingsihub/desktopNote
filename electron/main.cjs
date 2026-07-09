@@ -8,6 +8,7 @@ let mainWindow = null;
 let tray = null;
 const devUrl = process.env.VITE_DEV_SERVER_URL;
 const HIDDEN_START_ARG = "--hidden-start";
+const startedHidden = shouldStartHidden();
 const TODO_MARKER = "[[desktop-note:todo]]";
 const TODO_META_RE = /\s*<!--dn-(bucket|created):[^>]+-->/g;
 const APP_ICON = path.join(__dirname, "icons", "icon.png");
@@ -142,8 +143,32 @@ function loginItemSettings(openAtLogin) {
   return settings;
 }
 
+/**
+ * 判断当前进程是否为隐藏启动。
+ * 计算逻辑：Windows 开机自启参数可能被合并到复合参数中，所以使用精确匹配或包含匹配判断。
+ */
 function shouldStartHidden() {
-  return process.argv.includes(HIDDEN_START_ARG);
+  const hiddenStart = process.argv.some((arg) => arg === HIDDEN_START_ARG || arg.includes(HIDDEN_START_ARG));
+  console.log(`[startup] hidden start=${hiddenStart}, args=${process.argv.join(" ")}`);
+  return hiddenStart;
+}
+
+/**
+ * 判断主页窗口是否需要从任务栏隐藏。
+ * 计算逻辑：开机隐藏启动时全程隐藏主页任务栏图标，普通启动时保留任务栏图标。
+ */
+function shouldSkipMainTaskbar() {
+  console.log(`[taskbar] main skip=${startedHidden}, startedHidden=${startedHidden}`);
+  return startedHidden;
+}
+
+/**
+ * 判断窗口是否需要从任务栏隐藏。
+ * 计算逻辑：非主页窗口固定隐藏；主页窗口仅在隐藏启动或配置要求时隐藏。
+ */
+function shouldSkipWindowTaskbar(surface, startHidden) {
+  const isMain = surface === "main";
+  return !isMain || startHidden || (isMain && shouldSkipMainTaskbar());
 }
 
 function isOpenAtLogin() {
@@ -352,6 +377,7 @@ function createWindow(surface = "main", id = "", options = {}) {
   const startHidden = isMain && !show;
   const tileState = isTile ? readTileState(id) : {};
   const tileBounds = isTile ? normalizeBounds(tileState.bounds) : null;
+  const skipTaskbar = shouldSkipWindowTaskbar(surface, startHidden);
   const browserWindow = new BrowserWindow({
     ...(tileBounds ? tileBounds : {}),
     width: tileBounds?.width ?? (isMain ? 1120 : 360),
@@ -362,7 +388,7 @@ function createWindow(surface = "main", id = "", options = {}) {
     transparent: true,
     resizable: true,
     show,
-    skipTaskbar: isTile || startHidden,
+    skipTaskbar,
     icon: APP_ICON,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
@@ -371,6 +397,10 @@ function createWindow(surface = "main", id = "", options = {}) {
       spellcheck: false,
     },
   });
+  if (skipTaskbar) {
+    console.log(`[window] hide taskbar icon, surface=${surface}, id=${id || "main"}`);
+    browserWindow.setSkipTaskbar(true);
+  }
 
   const query = surface === "main" ? "" : `?surface=${surface}${id ? `&id=${encodeURIComponent(id)}` : ""}`;
   if (devUrl) {
@@ -408,7 +438,7 @@ function hideMainWindow() {
 
 function showMainWindow() {
   if (!mainWindow) return;
-  mainWindow.setSkipTaskbar(false);
+  mainWindow.setSkipTaskbar(shouldSkipMainTaskbar());
   hideTileWindowsFromTaskbar();
   mainWindow.show();
   mainWindow.focus();
@@ -673,7 +703,7 @@ function setupIpc() {
 app.whenReady().then(() => {
   setupApplicationMenu();
   setupIpc();
-  createWindow("main", "", { show: !shouldStartHidden() });
+  createWindow("main", "", { show: !startedHidden });
   restorePinnedTiles();
   setupTray();
   registerShortcuts();
